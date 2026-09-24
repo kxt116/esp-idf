@@ -14,6 +14,9 @@ endif()
 
 if(NOT BOOTLOADER_BUILD)
     list(APPEND srcs "sar_periph_ctrl.c")
+    if(CONFIG_PM_MODEM_STATE_ENABLED)
+        list(APPEND srcs "pmu_sleep_power.c")
+    endif()
 endif()
 
 add_prefix(srcs "${CMAKE_CURRENT_LIST_DIR}/" "${srcs}")

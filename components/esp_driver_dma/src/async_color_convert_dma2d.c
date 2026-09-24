@@ -6,6 +6,7 @@
 
 #include <stdatomic.h>
 #include <sys/queue.h>
+#include <sys/param.h>
 #include <inttypes.h>
 #include <assert.h>
 #include "freertos/FreeRTOS.h"
@@ -16,6 +17,7 @@
 #include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
 #include "esp_async_color_convert_priv.h"
+#include "esp_private/dma2d.h"
 #include "soc/dma2d_channel.h"
 #include "hal/dma2d_types.h"
 #include "hal/dma2d_ll.h"
@@ -35,7 +37,8 @@ struct async_color_convert_transaction {
     dma2d_trans_config_t dma2d_trans_config;  // Per-request DMA2D transaction configuration
 
     async_color_convert_request_t request;    // Cached user request used to build DMA2D transaction
-    dma2d_csc_config_t tx_csc;                // Cached DMA2D CSC configuration resolved in task context
+    dma2d_csc_config_t tx_csc;                // Cached DMA2D TX CSC configuration resolved in task context
+    dma2d_csc_config_t rx_csc;                // Cached DMA2D RX CSC configuration resolved in task context
     async_color_convert_isr_cb_t cb_isr;      // User ISR callback for this request
     void *cb_args;                            // User callback argument
     async_color_convert_dma2d_context_t *ctx; // Back pointer to parent context
@@ -62,34 +65,65 @@ static esp_err_t async_color_convert_dma2d_convert(async_color_convert_context_t
                                                    async_color_convert_isr_cb_t cb_isr,
                                                    void *cb_args);
 
-static bool try_convert_request_to_dma2d_csc(const async_color_convert_request_t *request,
-                                             dma2d_csc_config_t *out_tx_csc)
+static bool is_rgb24_or_bgr24_fourcc(esp_color_fourcc_t fourcc)
+{
+    return fourcc == ESP_COLOR_FOURCC_BGR24 || fourcc == ESP_COLOR_FOURCC_RGB24;
+}
+
+static dma2d_csc_config_t default_tx_csc_config(void)
+{
+    return (dma2d_csc_config_t) {
+        .tx_csc_option = DMA2D_CSC_TX_NONE,
+        .pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0,
+        .post_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0,
+    };
+}
+
+static dma2d_csc_config_t default_rx_csc_config(void)
+{
+    return (dma2d_csc_config_t) {
+        .rx_csc_option = DMA2D_CSC_RX_NONE,
+        .pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0,
+        .post_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0,
+    };
+}
+
+static bool resolve_dma2d_csc_configs(const async_color_convert_request_t *request,
+                                      dma2d_csc_config_t *out_tx_csc,
+                                      dma2d_csc_config_t *out_rx_csc)
 {
     esp_color_fourcc_t src_fourcc = request->src_color_format;
     esp_color_fourcc_t dst_fourcc = request->dst_color_format;
+    bool src_is_rgb24_or_bgr24 = is_rgb24_or_bgr24_fourcc(src_fourcc);
+    bool dst_is_rgb24_or_bgr24 = is_rgb24_or_bgr24_fourcc(dst_fourcc);
+
+    *out_tx_csc = default_tx_csc_config();
+    *out_rx_csc = default_rx_csc_config();
 
     if (src_fourcc == dst_fourcc) {
-        out_tx_csc->tx_csc_option = DMA2D_CSC_TX_NONE;
-        out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
-        out_tx_csc->post_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
+        return true;
+    }
+
+    if (src_is_rgb24_or_bgr24 && dst_is_rgb24_or_bgr24) {
+        out_tx_csc->tx_csc_option = DMA2D_CSC_TX_SCRAMBLE; // RGB<->BGR conversion is just a scramble operation
+        out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE0_1_2;
         return true;
     }
 
     if (src_fourcc == ESP_COLOR_FOURCC_RGB16 && dst_fourcc == ESP_COLOR_FOURCC_BGR24) {
         out_tx_csc->tx_csc_option = DMA2D_CSC_TX_RGB565_TO_RGB888;
-        out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
-        out_tx_csc->post_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
         return true;
     }
 
-    if (src_fourcc == ESP_COLOR_FOURCC_BGR24 && dst_fourcc == ESP_COLOR_FOURCC_RGB16) {
+    if (src_is_rgb24_or_bgr24 && dst_fourcc == ESP_COLOR_FOURCC_RGB16) {
         out_tx_csc->tx_csc_option = DMA2D_CSC_TX_RGB888_TO_RGB565;
-        out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
-        out_tx_csc->post_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
+        if (src_fourcc == ESP_COLOR_FOURCC_RGB24) {
+            out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE0_1_2;
+        }
         return true;
     }
 
-    if (src_fourcc == ESP_COLOR_FOURCC_BGR24 && dst_fourcc == ESP_COLOR_FOURCC_UYVY) {
+    if (src_is_rgb24_or_bgr24 && dst_fourcc == ESP_COLOR_FOURCC_UYVY) {
         if (request->color_conv_std == COLOR_CONV_STD_RGB_YUV_BT601) {
             out_tx_csc->tx_csc_option = DMA2D_CSC_TX_RGB888_TO_YUV422_601;
         } else if (request->color_conv_std == COLOR_CONV_STD_RGB_YUV_BT709) {
@@ -97,8 +131,9 @@ static bool try_convert_request_to_dma2d_csc(const async_color_convert_request_t
         } else {
             return false;
         }
-        out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
-        out_tx_csc->post_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
+        if (src_fourcc == ESP_COLOR_FOURCC_RGB24) {
+            out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE0_1_2;
+        }
         return true;
     }
 
@@ -110,8 +145,6 @@ static bool try_convert_request_to_dma2d_csc(const async_color_convert_request_t
         } else {
             return false;
         }
-        out_tx_csc->pre_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
-        out_tx_csc->post_scramble = DMA2D_SCRAMBLE_ORDER_BYTE2_1_0;
         return true;
     }
 
@@ -123,14 +156,34 @@ static inline bool needs_tx_csc(const dma2d_csc_config_t *tx_csc)
     return tx_csc->tx_csc_option != DMA2D_CSC_TX_NONE;
 }
 
+static inline bool needs_rx_csc(const dma2d_csc_config_t *rx_csc)
+{
+    return rx_csc->rx_csc_option != DMA2D_CSC_RX_NONE;
+}
+
 static esp_err_t sync_if_cacheable(void *addr, size_t size, int flags)
 {
     return esp_cache_get_line_size_by_addr(addr) > 0 ? esp_cache_msync(addr, size, flags) : ESP_OK;
 }
 
-static size_t get_picture_size_bytes(uint32_t stride, uint32_t height, uint32_t bit_depth)
+static void get_picture_window_bytes(uint32_t stride,
+                                     uint32_t x,
+                                     uint32_t y,
+                                     uint32_t window_width,
+                                     uint32_t window_height,
+                                     uint32_t bit_depth,
+                                     size_t *out_offset,
+                                     size_t *out_size)
 {
-    return (((size_t)stride * height * bit_depth) + 7) / 8;
+    size_t start_bit = ((size_t)y * stride + x) * bit_depth;
+    size_t end_bit = (((size_t)(y + window_height - 1) * stride + x + window_width) * bit_depth);
+    // Floor-divide start so the range begins at the first byte that contains start_bit.
+    // Ceil-divide end ((end_bit + 7) / 8) so any partial trailing byte is included.
+    size_t start_byte = start_bit / 8;
+    size_t end_byte = (end_bit + 7) / 8;
+
+    *out_offset = start_byte;
+    *out_size = end_byte - start_byte;
 }
 
 static esp_err_t validate_request(const async_color_convert_request_t *request)
@@ -155,6 +208,17 @@ static esp_err_t validate_request(const async_color_convert_request_t *request)
                         request->dst_stride <= DMA2D_LL_DESC_2D_FIELD_MAX &&
                         request->dst_height <= DMA2D_LL_DESC_2D_FIELD_MAX,
                         ESP_ERR_INVALID_ARG, TAG, "dimension exceeds DMA2D descriptor field limit");
+
+    uint32_t src_bit_depth = color_hal_pixel_format_fourcc_get_bit_depth(request->src_color_format);
+    uint32_t dst_bit_depth = color_hal_pixel_format_fourcc_get_bit_depth(request->dst_color_format);
+    ESP_RETURN_ON_FALSE(dma2d_check_transaction_alignment_constraint(request->src_buffer, request->src_stride,
+                                                                     request->copy_width, request->src_x,
+                                                                     src_bit_depth),
+                        ESP_ERR_INVALID_ARG, TAG, "source buffer or window is not aligned to DMA2D alignment");
+    ESP_RETURN_ON_FALSE(dma2d_check_transaction_alignment_constraint(request->dst_buffer, request->dst_stride,
+                                                                     request->copy_width, request->dst_x,
+                                                                     dst_bit_depth),
+                        ESP_ERR_INVALID_ARG, TAG, "destination buffer or window is not aligned to DMA2D alignment");
 
     return ESP_OK;
 }
@@ -239,9 +303,8 @@ static bool async_color_convert_on_job_picked(uint32_t channel_num,
     dma2d_set_transfer_ability(tx_chan, &transfer_ability);
     dma2d_set_transfer_ability(rx_chan, &transfer_ability);
 
-    if (needs_tx_csc(&trans->tx_csc)) {
-        dma2d_configure_color_space_conversion(tx_chan, &trans->tx_csc);
-    }
+    dma2d_configure_color_space_conversion(tx_chan, &trans->tx_csc);
+    dma2d_configure_color_space_conversion(rx_chan, &trans->rx_csc);
 
     dma2d_rx_event_callbacks_t cbs = {
         .on_recv_eof = async_color_convert_done_cb,
@@ -301,16 +364,18 @@ static esp_err_t async_color_convert_dma2d_convert(async_color_convert_context_t
 
     esp_color_fourcc_t src_fourcc = request->src_color_format;
     esp_color_fourcc_t dst_fourcc = request->dst_color_format;
-    trans->tx_csc = (dma2d_csc_config_t) {};
-    ESP_GOTO_ON_FALSE(try_convert_request_to_dma2d_csc(request, &trans->tx_csc),
+    trans->tx_csc = default_tx_csc_config();
+    trans->rx_csc = default_rx_csc_config();
+    ESP_GOTO_ON_FALSE(resolve_dma2d_csc_configs(request, &trans->tx_csc, &trans->rx_csc),
                       ESP_ERR_INVALID_ARG, recycle_and_out, TAG, "unsupported color conversion mode");
 
+    trans->dma2d_trans_config.channel_flags = DMA2D_CHANNEL_FUNCTION_FLAG_SIBLING;
     if (needs_tx_csc(&trans->tx_csc)) {
-        trans->dma2d_trans_config.channel_flags = DMA2D_CHANNEL_FUNCTION_FLAG_SIBLING | DMA2D_CHANNEL_FUNCTION_FLAG_TX_CSC;
-    } else {
-        trans->dma2d_trans_config.channel_flags = DMA2D_CHANNEL_FUNCTION_FLAG_SIBLING;
+        trans->dma2d_trans_config.channel_flags |= DMA2D_CHANNEL_FUNCTION_FLAG_TX_CSC;
     }
-
+    if (needs_rx_csc(&trans->rx_csc)) {
+        trans->dma2d_trans_config.channel_flags |= DMA2D_CHANNEL_FUNCTION_FLAG_RX_CSC;
+    }
     setup_desc(trans->tx_desc,
                (void *)request->src_buffer,
                request->src_stride,
@@ -334,15 +399,29 @@ static esp_err_t async_color_convert_dma2d_convert(async_color_convert_context_t
     uint32_t src_bpp = color_hal_pixel_format_fourcc_get_bit_depth(src_fourcc);
     uint32_t dst_bpp = color_hal_pixel_format_fourcc_get_bit_depth(dst_fourcc);
 
-    size_t src_total_size = get_picture_size_bytes(request->src_stride, request->src_height, src_bpp);
-    size_t dst_total_size = get_picture_size_bytes(request->dst_stride, request->dst_height, dst_bpp);
+    size_t src_window_offset = 0;
+    size_t src_window_size = 0;
+    get_picture_window_bytes(request->src_stride, request->src_x, request->src_y,
+                             request->copy_width, request->copy_height, src_bpp,
+                             &src_window_offset, &src_window_size);
 
-    ESP_GOTO_ON_ERROR(sync_if_cacheable((void *)request->src_buffer, src_total_size,
+    size_t dst_window_offset = 0;
+    size_t dst_window_size = 0;
+    get_picture_window_bytes(request->dst_stride, request->dst_x, request->dst_y,
+                             request->copy_width, request->copy_height, dst_bpp,
+                             &dst_window_offset, &dst_window_size);
+
+    uint8_t *src_window_addr = (uint8_t *)request->src_buffer + src_window_offset;
+    uint8_t *dst_window_addr = (uint8_t *)request->dst_buffer + dst_window_offset;
+
+    ESP_GOTO_ON_ERROR(sync_if_cacheable(src_window_addr, src_window_size,
                                         ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED),
                       recycle_and_out, TAG, "source cache sync failed");
 
-    ESP_GOTO_ON_ERROR(sync_if_cacheable(request->dst_buffer, dst_total_size,
-                                        ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_INVALIDATE),
+    // UNALIGNED is safe here because C2M writes back partial cache lines before invalidating them
+    // Callers must not access the destination buffer until the async operation completes.
+    ESP_GOTO_ON_ERROR(sync_if_cacheable(dst_window_addr, dst_window_size,
+                                        ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_INVALIDATE | ESP_CACHE_MSYNC_FLAG_UNALIGNED),
                       recycle_and_out, TAG, "destination cache sync failed");
 
     ESP_GOTO_ON_ERROR(sync_if_cacheable(trans->tx_desc, color_ctx->desc_alloc_size,

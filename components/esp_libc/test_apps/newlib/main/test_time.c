@@ -192,6 +192,18 @@ void test_adjtime_function(test_adjtime_mode_t mode, test_clock_adjtime_units_t 
         TEST_ASSERT_EQUAL(realtime_adjtime_wrapper(&tv_delta, &tv_outdelta, mode, units), -1);
     }
 
+    // a multi-day delta must be rejected, not silently
+    // truncated into the 32-bit timex.offset (µs) field and applied as a small slew.
+    if (mode == TEST_ADJTIME_MODE_LEGACY) {
+        tv_delta.tv_sec = 400L * 24 * 60 * 60; // 400 days
+        tv_delta.tv_usec = 123456;
+        TEST_ASSERT_EQUAL(realtime_adjtime_wrapper(&tv_delta, NULL, mode, units), -1);
+
+        tv_delta.tv_sec = -400L * 24 * 60 * 60;
+        tv_delta.tv_usec = -123456;
+        TEST_ASSERT_EQUAL(realtime_adjtime_wrapper(&tv_delta, NULL, mode, units), -1);
+    }
+
     tv_delta.tv_sec = 0;
     tv_delta.tv_usec = -900000;
     TEST_ASSERT_EQUAL(realtime_adjtime_wrapper(&tv_delta, &tv_outdelta, mode, units), 0);
@@ -548,6 +560,17 @@ TEST_CASE("test posix_timers clock_... functions", "[newlib]")
     test_posix_timers_clock();
 }
 
+TEST_CASE("timespec_get returns UTC time", "[newlib]")
+{
+    struct timespec ts = {0};
+
+    TEST_ASSERT_EQUAL_INT(TIME_UTC, timespec_get(&ts, TIME_UTC));
+    TEST_ASSERT_GREATER_OR_EQUAL_INT64(0, ts.tv_sec);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT32(0, ts.tv_nsec);
+    TEST_ASSERT_LESS_THAN_INT32(1000000000L, ts.tv_nsec);
+    TEST_ASSERT_EQUAL_INT(0, timespec_get(&ts, -1));
+}
+
 #define TEST_USE_CPU_CYCLES 1
 #if TEST_USE_CPU_CYCLES && CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
 #include "esp_cpu.h"
@@ -562,17 +585,6 @@ typedef uint64_t benchmark_tick_t;  /* unit: microseconds */
 #define benchmark_print_units(type, x) printf("%s us: %lu\n", type, (unsigned long)(x))
 #endif
 
-#define N 4096
-const uint32_t ro_tbl[N] = { 2 };
-uint32_t scan_tbl(const volatile uint32_t *p, size_t n)
-{
-    uint32_t sum = 0;
-    for (size_t i = 0; i < n; i++) {
-        sum += p[i];
-    }
-    return sum;
-}
-
 void test_posix_timers_clock_performance(clockid_t clock_id)
 {
     const int MEASUREMENTS = 5000;
@@ -584,14 +596,10 @@ void test_posix_timers_clock_performance(clockid_t clock_id)
     benchmark_tick_t delta;
     benchmark_tick_t delta_sum = 0;
     for (int i = 0; i < PHASE_COUNT; i++) {
-        volatile uint32_t table_sum = 0;
         if (i == PHASE_COUNT / 2) {
             printf("With table scan...\n");
         }
         for (int j = 0; j < MEASUREMENTS; j++) {
-            if (i >= PHASE_COUNT / 2) {
-                table_sum += scan_tbl(ro_tbl, N);
-            }
             start = get_start();
             clock_settime(clock_id, &ts);
             end = get_end();

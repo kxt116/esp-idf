@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -57,7 +57,8 @@ typedef enum
     //REG
     BTC_HF_REGISTER_DATA_CALLBACK_EVT,
     BTC_HF_REGISTER_AUDIO_DATA_CALLBACK_EVT,
-    BTC_HF_REQUEST_PKT_STAT_EVT
+    BTC_HF_REQUEST_PKT_STAT_EVT,
+    BTC_HF_SET_CODEC_EVT
 } btc_hf_act_t;
 
 /* btc_hf_args_t */
@@ -190,6 +191,12 @@ typedef union
         UINT16            sync_conn_handle;
     } pkt_sync_hd;
 
+    // BTC_HF_SET_CODEC_EVT
+    struct ag_set_codec_param {
+        bt_bdaddr_t           remote_addr;
+        esp_hf_codec_mode_t   mode;
+    } set_codec;
+
 } btc_hf_args_t;
 
 /************************************************************************************
@@ -254,7 +261,7 @@ void btc_hf_arg_deep_free(btc_msg_t *msg);
 
 bt_status_t btc_hf_ci_sco_data(void);
 
-bool btc_hf_ag_audio_data_send(uint16_t sync_conn_hdl, uint8_t *p_buff_start, uint8_t *p_data, uint8_t data_len);
+bt_status_t btc_hf_ag_audio_data_send(uint16_t sync_conn_hdl, uint8_t *p_buff_start, uint8_t *p_data, uint8_t data_len);
 
 void btc_hf_get_profile_status(esp_hf_profile_status_t *param);
 #endif  // BTC_HF_INCLUDED == TRUE

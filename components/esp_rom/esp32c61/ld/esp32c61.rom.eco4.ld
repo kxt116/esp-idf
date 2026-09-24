@@ -8,7 +8,7 @@
  eco4 fixed
  ***************************************/
 
-coex_core_timer_idx_get = 0x40000a54;
+/* coex_core_timer_idx_get = 0x40000a54; */
 coex_status_get = 0x40000a74;
 ets_delay_us = 0x4000003c;
 
@@ -26,7 +26,7 @@ pm_check_state = 0x40000cb4;
 pm_set_beacon_filter = 0x40000cd8;
 //pm_is_in_wifi_slice_threshold = 0x40000cdc;
 //pm_keep_alive = 0x40000ce4;
-pm_process_tim = 0x40000d14;
+//pm_process_tim = 0x40000d14;
 //pm_tbtt_process = 0x40000d28;
 pm_tx_data_process = 0x40000d44;
 pm_twt_process = 0x40000d54;

@@ -13,10 +13,12 @@ from .file_utils import bin_files_differ
 from .file_utils import file_contains
 from .file_utils import replace_in_file
 from .idf_utils import EXT_IDF_PATH
+from .idf_utils import FAILED_COMMAND_LOG_DIR_ENV
 from .idf_utils import EnvDict
 from .idf_utils import IdfPyFunc
 from .idf_utils import find_python
 from .idf_utils import get_idf_build_env
+from .idf_utils import normalize_output
 from .idf_utils import run_cmake
 from .idf_utils import run_cmake_and_build
 from .idf_utils import run_idf_py
@@ -32,6 +34,7 @@ __all__ = [
     'run_idf_py',
     'EXT_IDF_PATH',
     'EnvDict',
+    'FAILED_COMMAND_LOG_DIR_ENV',
     'IdfPyFunc',
     'Snapshot',
     'get_snapshot',
@@ -45,6 +48,7 @@ __all__ = [
     'ALL_ARTIFACTS_BUILDV2',
     'run_cmake_and_build',
     'find_python',
+    'normalize_output',
     'file_contains',
     'bin_file_contains',
     'bin_files_differ',

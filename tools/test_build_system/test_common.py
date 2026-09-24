@@ -6,7 +6,6 @@ import os
 import re
 import shutil
 import stat
-import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -72,9 +71,12 @@ def get_subdirs_absolute_paths(path: Path) -> list[str]:
 
 @pytest.mark.usefixtures('test_app_copy')
 @pytest.mark.test_app_copy('examples/get-started/blink')
-def test_compile_commands_json_updated_by_reconfigure(idf_py: IdfPyFunc) -> None:
+def test_compile_commands_json_updated_by_reconfigure(idf_py: IdfPyFunc, request: pytest.FixtureRequest) -> None:
     output = idf_py('reconfigure')
-    assert 'Building ESP-IDF components for target esp32' in output.stdout
+    if request.config.getoption('buildv2', False):
+        assert 'IDF Build System V2 (cmakev2) activated' in output.stdout
+    else:
+        assert 'Building ESP-IDF components for target esp32' in output.stdout
     snapshot_1 = get_snapshot(['build/compile_commands.json'])
     snapshot_2 = get_snapshot(['build/compile_commands.json'])
     snapshot_2.assert_same(snapshot_1)
@@ -92,12 +94,16 @@ def test_hints_no_color_output_when_noninteractive(idf_py: IdfPyFunc) -> None:
         'main/build_test_app.c', '// placeholder_inside_main', 'esp_chip_info_t chip_info; esp_chip_info(&chip_info);'
     )
 
-    with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        idf_py('build')
+    # Expected failure: do not go through run_idf_py(check=True). That path
+    # still has to write one logging.error record, and on Windows CI that write
+    # is what hangs shard 3/6 after this test.
+    ret = idf_py('build', check=False)
 
-    # Should not actually include a color escape sequence!
-    # Change the assert to the correct value once the bug is fixed.
-    assert '\x1b[0;33mHINT: esp_chip_info.h' in exc_info.value.stderr
+    # the shared esp_pylib logger drops color escape sequences on
+    # non-interactive (non-TTY) output, so the hint appears without any ANSI color codes.
+    assert ret.returncode != 0
+    assert 'esp_chip_info.h' in ret.stdout
+    assert '\x1b[' not in ret.stdout
 
 
 @pytest.mark.usefixtures('test_app_copy')
@@ -442,7 +448,7 @@ def test_deprecation_warning(idf_py: IdfPyFunc) -> None:
     logging.info('Deprecation warning check')
     ret = idf_py('post_debug', check=False)
     # click warning
-    assert 'Error: Command "post_debug" is deprecated since v4.4 and was removed in v5.0.' in ret.stderr
+    assert 'Command "post_debug" is deprecated since v4.4 and was removed in v5.0.' in ret.stderr
 
     ret = idf_py('efuse_common_table', check=False)
     # cmake warning
@@ -540,8 +546,8 @@ def test_hints_components_loading(
         )
 
     ret = idf_py('build', check=False)
-    assert 'HINT FROM IDF COMPONENT' in ret.stderr, 'Hint from IDF component should be displayed in build output'
-    assert 'HINT FROM PROJECT COMPONENT' in ret.stderr, (
+    assert 'HINT FROM IDF COMPONENT' in ret.stdout, 'Hint from IDF component should be displayed in build output'
+    assert 'HINT FROM PROJECT COMPONENT' in ret.stdout, (
         'Hint from project component should be displayed in build output'
     )
 

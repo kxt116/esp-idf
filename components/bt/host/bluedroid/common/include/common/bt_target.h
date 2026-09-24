@@ -75,11 +75,7 @@
 
 #define BR_EDR_MAX_RECONNECT_ON_COLLISION UC_BT_CLASSIC_MAX_RECONNECT_ON_COLLISION
 
-#define ENC_KEY_SIZE_CTRL_MODE_NONE 0
-#define ENC_KEY_SIZE_CTRL_MODE_STD  1
-#define ENC_KEY_SIZE_CTRL_MODE_VSC  2
-#define ENC_KEY_SIZE_CTRL_MODE      UC_BT_ENC_KEY_SIZE_CTRL_MODE
-
+#define ESP_BT_CLASSIC_ENABLE_ENC_KEY_SIZE_CTRL_VSC    UC_BT_CLASSIC_ENABLE_ENC_KEY_SIZE_CTRL_VSC
 #define ESP_BT_CLASSIC_ENABLE_POWER_CTRL_VSC UC_BT_CLASSIC_ENABLE_POWER_CTRL_VSC
 
 #if (UC_BT_A2DP_ENABLED == TRUE)
@@ -219,6 +215,16 @@
 #define BTA_PBA_CLIENT_INCLUDED     TRUE
 #endif
 
+#if UC_BT_PAN_ENABLED
+#define BTC_PAN_INCLUDED            TRUE
+#define BTA_PAN_INCLUDED            TRUE
+#define PAN_INCLUDED                TRUE
+#define BNEP_INCLUDED               TRUE
+#define PAN_SUPPORTS_ROLE_PANU      TRUE
+#define PAN_SUPPORTS_ROLE_GN        TRUE
+#define PAN_SUPPORTS_ROLE_NAP       TRUE
+#endif
+
 #endif /* UC_BT_CLASSIC_ENABLED */
 
 /* This is set to enable use of GAP L2CAP connections. */
@@ -249,6 +255,42 @@
 #define BLE_50_FEATURE_SUPPORT   TRUE
 #else
 #define BLE_50_FEATURE_SUPPORT   FALSE
+#endif
+
+/* Peripheral dual local-identity bond isolation via Host-internal pseudo
+ * address. Guarded so default builds keep the legacy single-bond behavior. */
+#if (UC_BT_BLE_PERIPH_PSEUDO_ADDR_BOND == TRUE)
+#define BLE_PERIPH_PSEUDO_ADDR_BOND   TRUE
+#else
+#define BLE_PERIPH_PSEUDO_ADDR_BOND   FALSE
+#endif
+
+/* Refuse a re-pairing that would end up weaker than the bond it replaces. */
+#if (UC_BT_BLE_SMP_HARDENED_REPAIRING == TRUE)
+#define BLE_SMP_HARDENED_REPAIRING    TRUE
+#else
+#define BLE_SMP_HARDENED_REPAIRING    FALSE
+#endif
+
+/* Erase the NVS bond when pairing/encryption fails while local device is Central. */
+#if (UC_BT_BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL == TRUE)
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL TRUE
+#else
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL FALSE
+#endif
+
+/* Erase the NVS bond when pairing/encryption fails while local device is Peripheral. */
+#if (UC_BT_BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_PERIPHERAL == TRUE)
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_PERIPHERAL TRUE
+#else
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_PERIPHERAL FALSE
+#endif
+
+/* Discard the local LE keys when the peer rejects encryption with "PIN or Key Missing". */
+#if (UC_BT_BLE_SMP_UNBOND_ON_KEY_MISSING == TRUE)
+#define BLE_SMP_UNBOND_ON_KEY_MISSING TRUE
+#else
+#define BLE_SMP_UNBOND_ON_KEY_MISSING FALSE
 #endif
 
 #if (UC_BT_BLE_ENABLED ==TRUE)
@@ -448,11 +490,47 @@
 #define BT_BLE_FEAT_CHANNEL_SOUNDING     FALSE
 #endif
 
+#if (BT_BLE_FEAT_CHANNEL_SOUNDING == TRUE) && (UC_BT_BLE_FEAT_CS_SECURITY_REQUIREMENTS == TRUE)
+#define BT_BLE_FEAT_CS_SECURITY_REQUIREMENTS     TRUE
+#else
+#define BT_BLE_FEAT_CS_SECURITY_REQUIREMENTS     FALSE
+#endif
+
 /* LE Monitor Advertisement (Bluetooth Core 6.0) */
 #if (BLE_50_FEATURE_SUPPORT == TRUE) && (defined UC_BT_BLE_FEAT_ADV_MONITOR) && (UC_BT_BLE_FEAT_ADV_MONITOR == TRUE)
 #define BLE_FEAT_ADV_MONITOR     TRUE
 #else
 #define BLE_FEAT_ADV_MONITOR     FALSE
+#endif
+
+#if (BLE_50_FEATURE_SUPPORT == TRUE) && (UC_BT_BLE_FEAT_DBAF == TRUE)
+#define BLE_FEAT_DBAF     TRUE
+#else
+#define BLE_FEAT_DBAF     FALSE
+#endif
+
+#if (BLE_50_FEATURE_SUPPORT == TRUE) && (UC_BT_BLE_FEAT_FRAME_SPACE_UPDATE == TRUE)
+#define BLE_FEAT_FRAME_SPACE_UPDATE     TRUE
+#else
+#define BLE_FEAT_FRAME_SPACE_UPDATE     FALSE
+#endif
+
+#if (BLE_50_FEATURE_SUPPORT == TRUE) && (UC_BT_BLE_FEAT_LL_EXT_FEAT == TRUE)
+#define BLE_FEAT_LL_EXT_FEAT     TRUE
+#else
+#define BLE_FEAT_LL_EXT_FEAT     FALSE
+#endif
+
+#if (BLE_50_FEATURE_SUPPORT == TRUE) && (UC_BT_BLE_FEAT_SHORTER_CONN_INTERVALS == TRUE)
+#define BLE_FEAT_SHORTER_CONN_INTERVALS     TRUE
+#else
+#define BLE_FEAT_SHORTER_CONN_INTERVALS     FALSE
+#endif
+
+#if (BLE_50_FEATURE_SUPPORT == TRUE) && (UC_BT_BLE_FEAT_LE_UTP == TRUE)
+#define BLE_FEAT_LE_UTP     TRUE
+#else
+#define BLE_FEAT_LE_UTP     FALSE
 #endif
 
 #if (UC_BT_BLE_VENDOR_HCI_EN == TRUE)
@@ -670,6 +748,14 @@
 
 #ifndef BTC_SPP_INCLUDED
 #define BTC_SPP_INCLUDED FALSE
+#endif
+
+#ifndef BTC_PAN_INCLUDED
+#define BTC_PAN_INCLUDED FALSE
+#endif
+
+#ifndef BTA_PAN_INCLUDED
+#define BTA_PAN_INCLUDED FALSE
 #endif
 
 #ifndef BTC_HH_INCLUDED
@@ -1131,6 +1217,20 @@
 #define BTM_MSBC_FRAME_DATA_SIZE          57
 #endif
 
+/* LC3-SWB eSCO air frame (H2 + payload); same 60-byte eSCO packet as mSBC */
+#ifndef BTM_LC3_FRAME_SIZE
+#define BTM_LC3_FRAME_SIZE                  60
+#endif
+
+#ifndef BTM_LC3_FRAME_DATA_SIZE
+#define BTM_LC3_FRAME_DATA_SIZE             58
+#endif
+
+/* Transparent wideband air frame size (mSBC and LC3-SWB) */
+#ifndef BTM_HFP_TRANSPARENT_FRAME_SIZE
+#define BTM_HFP_TRANSPARENT_FRAME_SIZE      BTM_MSBC_FRAME_SIZE
+#endif
+
 /* The size in bytes of the BTM inquiry database. 5 As Default */
 #ifndef BTM_INQ_DB_SIZE
 #define BTM_INQ_DB_SIZE             5
@@ -1248,6 +1348,12 @@
 #define BTM_PBA_SEC_SERVICE_RECORDS 0
 #endif
 
+#if BTA_PAN_INCLUDED
+#define BTM_PAN_SEC_SERVICE_RECORDS 6
+#else
+#define BTM_PAN_SEC_SERVICE_RECORDS 0
+#endif
+
 #if BTA_AV_CA_INCLUDED
 #define BTM_AC_VA_SEC_SERVICE_RECORDS 1
 #else
@@ -1306,7 +1412,7 @@
    + BTM_AVCT_SEC_SERVICE_RECORDS + BTM_AVDT_SEC_SERVICE_RECORDS + BTM_GAP_SEC_SERVICE_RECORDS    \
    + BTM_HIDD_SEC_SERVICE_RECORDS  + BTM_GATT_SEC_SERVICE_RECORDS + BTM_PBA_SEC_SERVICE_RECORDS   \
    + BTM_HIDH_SEC_SERVICE_RECORDS + BTM_SEC_DEV_SERVICE_RECORDS + BTM_HF_SEC_SERVICE_RECORDS      \
-   + BTM_JV_SEC_SERVICE_RECORDS + BTM_AC_VA_SEC_SERVICE_RECORDS )
+   + BTM_JV_SEC_SERVICE_RECORDS + BTM_PAN_SEC_SERVICE_RECORDS + BTM_AC_VA_SEC_SERVICE_RECORDS )
 #endif
 
 /* If True, force a retrieval of remote device name for each bond in case it's changed */
@@ -1478,7 +1584,85 @@
 
 /* Support status of L2CAP connection-oriented dynamic channels over LE transport with dynamic CID */
 #ifndef BLE_L2CAP_COC_INCLUDED
-#define BLE_L2CAP_COC_INCLUDED          FALSE // LE COC not use by default
+#if (UC_BT_BLE_L2CAP_COC_ENABLED == TRUE)
+#define BLE_L2CAP_COC_INCLUDED          TRUE
+#else
+#define BLE_L2CAP_COC_INCLUDED          FALSE
+#endif
+#endif
+
+#if (BLE_L2CAP_COC_INCLUDED == TRUE)
+#undef BLE_MAX_L2CAP_CLIENTS
+#define BLE_MAX_L2CAP_CLIENTS           UC_BT_BLE_L2CAP_COC_MAX_CHAN
+#endif
+
+/* Initial LE CoC/ECFC RX credit window (K-frames) from
+ * CONFIG_BT_BLE_L2CAP_COC_INIT_CREDITS. Defined even when CoC is disabled so
+ * that internal headers that reference L2CAP_LE_INIT_CREDITS remain valid. */
+#ifndef L2CAP_LE_INIT_CREDITS
+#define L2CAP_LE_INIT_CREDITS           UC_BT_BLE_L2CAP_COC_INIT_CREDITS
+#endif
+
+/* Default LE CoC/ECFC MPS from CONFIG_BT_BLE_L2CAP_COC_MPS. */
+#ifndef L2CAP_LE_COC_MPS
+#define L2CAP_LE_COC_MPS                UC_BT_BLE_L2CAP_COC_MPS
+#endif
+
+#ifndef BLE_L2CAP_COC_CLIENT_INCLUDED
+#if (BLE_L2CAP_COC_INCLUDED == TRUE) && (GATTC_INCLUDED == TRUE)
+#define BLE_L2CAP_COC_CLIENT_INCLUDED     TRUE
+#else
+#define BLE_L2CAP_COC_CLIENT_INCLUDED     FALSE
+#endif
+#endif
+
+#ifndef BLE_L2CAP_COC_SERVER_INCLUDED
+#if (BLE_L2CAP_COC_INCLUDED == TRUE) && (GATTS_INCLUDED == TRUE)
+#define BLE_L2CAP_COC_SERVER_INCLUDED     TRUE
+#else
+#define BLE_L2CAP_COC_SERVER_INCLUDED     FALSE
+#endif
+#endif
+
+#ifndef BLE_L2CAP_ENHANCED_COC_INCLUDED
+#if (UC_BT_BLE_L2CAP_ENHANCED_COC == TRUE) && (BLE_L2CAP_COC_INCLUDED == TRUE)
+#define BLE_L2CAP_ENHANCED_COC_INCLUDED TRUE
+#else
+#define BLE_L2CAP_ENHANCED_COC_INCLUDED FALSE
+#endif
+#endif
+
+#ifndef BLE_EATT_INCLUDED
+#if (UC_BT_BLE_EATT_ENABLE == TRUE) && (BLE_L2CAP_ENHANCED_COC_INCLUDED == TRUE)
+#define BLE_EATT_INCLUDED               TRUE
+#else
+#define BLE_EATT_INCLUDED               FALSE
+#endif
+#endif
+
+#ifndef BLE_EATT_CLIENT_INCLUDED
+#if (BLE_EATT_INCLUDED == TRUE) && (GATTC_INCLUDED == TRUE)
+#define BLE_EATT_CLIENT_INCLUDED          TRUE
+#else
+#define BLE_EATT_CLIENT_INCLUDED          FALSE
+#endif
+#endif
+
+#ifndef BLE_EATT_SERVER_INCLUDED
+#if (BLE_EATT_INCLUDED == TRUE) && (GATTS_INCLUDED == TRUE)
+#define BLE_EATT_SERVER_INCLUDED          TRUE
+#else
+#define BLE_EATT_SERVER_INCLUDED          FALSE
+#endif
+#endif
+
+/* EATT bearer count and MTU from CONFIG_BT_BLE_EATT_CHAN_NUM / CONFIG_BT_BLE_EATT_MTU. */
+#ifndef GATT_EATT_MAX_CHAN
+#define GATT_EATT_MAX_CHAN              UC_BT_BLE_EATT_CHAN_NUM
+#endif
+
+#ifndef GATT_EATT_MTU
+#define GATT_EATT_MTU                   UC_BT_BLE_EATT_MTU
 #endif
 
 /* Support status of L2CAP connection-oriented dynamic channels over LE or BR/EDR transport with dynamic CID */
@@ -2011,7 +2195,7 @@
 
 /* The port receive queue low watermark level, in number of buffers. */
 #ifndef PORT_RX_BUF_LOW_WM
-#define PORT_RX_BUF_LOW_WM          4
+#define PORT_RX_BUF_LOW_WM          6
 #endif
 
 /* The port receive queue high watermark level, in number of buffers. */
@@ -2309,6 +2493,11 @@
 #define AVDT_NUM_SEPS               UC_BT_A2DP_SEP_NUM_MAX
 #endif
 
+/* Maximum number of peer SEPs accepted in AVDTP Discover results. */
+#ifndef AVDT_DIS_RES_MAX_NUM_SEPS
+#define AVDT_DIS_RES_MAX_NUM_SEPS    32
+#endif
+
 /* Number of transport channels setup per media stream(audio or video) */
 #ifndef AVDT_NUM_CHANNELS
 
@@ -2451,11 +2640,6 @@
 
 #ifndef GAP_INCLUDED
 #define GAP_INCLUDED                TRUE
-#endif
-
-/* This is set to enable posting event for data write */
-#ifndef GAP_CONN_POST_EVT_INCLUDED
-#define GAP_CONN_POST_EVT_INCLUDED  FALSE
 #endif
 
 /* The maximum number of simultaneous GAP L2CAP connections. */

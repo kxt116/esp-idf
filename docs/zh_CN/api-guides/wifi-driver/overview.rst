@@ -335,7 +335,7 @@ IP_EVENT_STA_LOST_IP
 
 当 IPV4 地址失效时，将引发此事件。
 
-此事件不会在 Wi-Fi 断连后立刻出现。Wi-Fi 连接断开后，首先将启动一个 IPV4 地址丢失计时器（可通过 :ref:`CONFIG_ESP_NETIF_LOST_IP_TIMER_ENABLE` 与 :ref:`CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL` 配置）。如果 station 在该计时器超时之前成功获取了 IPV4 地址，则不会发生此事件。否则，此事件将在计时器超时时发生。
+此事件不会在 Wi-Fi 断连后立刻出现。Wi-Fi 连接断开后，首先将启动一个 IPV4 地址丢失计时器（可通过 :menuitem:`CONFIG_ESP_NETIF_LOST_IP_TIMER_ENABLE` 与 :menuitem:`CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL` 配置）。如果 station 在该计时器超时之前成功获取了 IPV4 地址，则不会发生此事件。否则，此事件将在计时器超时时发生。
 
 一般来说，应用程序可忽略此事件。这只是一个调试事件，主要使应用程序获知 IPV4 地址已丢失。
 
@@ -552,7 +552,7 @@ API :cpp:func:`esp_wifi_set_config()` 可用于配置 AP。配置的参数信息
   * - ssid_hidden
     - 如果 ssid_hidden 为 1，AP 不广播 SSID。若为其他值，则广播。
   * - max_connection
-    - 允许接入的 station 最大数量。{IDF_TARGET_NAME} 最多支持 {IDF_TARGET_MAX_CONN_STA_NUM}（``ESP_WIFI_MAX_CONN_NUM``） 个 Wi-Fi 连接。请注意，soft-AP 与 ESP-NOW 共享同一套加密硬件 keys，因此 max_connection 会受到 :ref:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM` 的影响。加密硬件 keys 总数为 {IDF_TARGET_SUPPORT_ENCRYPT_NUM}：若 :ref:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM` <= {IDF_TARGET_SUB_MAX_NUM_FROM_KEYS}，则 max_connection 最大可设为 {IDF_TARGET_MAX_CONN_STA_NUM}；否则最大可设为 ({IDF_TARGET_SUPPORT_ENCRYPT_NUM} - :ref:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM`)。
+    - 允许接入的 station 最大数量。{IDF_TARGET_NAME} 最多支持 {IDF_TARGET_MAX_CONN_STA_NUM}（``ESP_WIFI_MAX_CONN_NUM``） 个 Wi-Fi 连接。请注意，soft-AP 与 ESP-NOW 共享同一套加密硬件 keys，因此 max_connection 会受到 :menuitem:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM` 的影响。加密硬件 keys 总数为 {IDF_TARGET_SUPPORT_ENCRYPT_NUM}：若 :menuitem:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM` <= {IDF_TARGET_SUB_MAX_NUM_FROM_KEYS}，则 max_connection 最大可设为 {IDF_TARGET_MAX_CONN_STA_NUM}；否则最大可设为 ({IDF_TARGET_SUPPORT_ENCRYPT_NUM} - :menuitem:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM`)。
   * - beacon_interval
     - beacon 间隔。值为 100 ~ 60000 ms，默认值为 100 ms。如果该值不在上述范围，AP 默认取 100 ms。
 
@@ -924,6 +924,7 @@ Wi-Fi 带宽模式
 
           1. 当 STA 连接到位于 DFS 信道的 AP 时，SoftAP 允许通过 CSA (Channel Switch Announcement) 切换至相同的 DFS 信道。
           2. 当 STA 断开连接后，SoftAP 将通过 CSA 切换回非 DFS 信道，确保符合监管要求。
+          3. 如需要完全禁止 SoftAP 工作在 DFS 信道上，可通过 :cpp:func:`esp_wifi_set_country()` 将 ``policy`` 设为 ``WIFI_COUNTRY_POLICY_MANUAL``，并将 ``wifi_5g_channel_mask`` 限制为当前国家/地区的非 DFS 信道。``wifi_5g_channel_mask`` 仅在 policy 为 ``WIFI_COUNTRY_POLICY_MANUAL`` 时生效。注意：此时若目标 AP 工作在 DFS 信道上，STA 将无法与该 AP 建立连接。各国 DFS 信道范围见 :component_file:`esp_wifi/regulatory/esp_wifi_regulatory.txt`。
 
 ..
 
@@ -1058,7 +1059,7 @@ Wi-Fi 国家/地区代码
       * - policy
         - 国家/地区策略。当配置的国家/地区与连接 AP 的信息冲突时，此字段决定应使用哪一方的信息。详情见下文说明。
       * - wifi_5g_channel_mask
-        - 表示 station/AP 在 5 GHz 频段中可使用的信道掩码。信道值与位的对应关系详见 :cpp:enum:`wifi_5g_channel_bit_t`。
+        - 表示 station/AP 在 5 GHz 频段中可使用的信道掩码。信道值与位的对应关系详见 :cpp:enum:`wifi_5g_channel_bit_t`。掩码为 0 时，5 GHz 信道按当地监管规则允许使用。配置的掩码仅在 ``policy`` 为 ``WIFI_COUNTRY_POLICY_MANUAL`` 时生效。如需禁用 DFS 信道，请将掩码限制为当前国家/地区的非 DFS 信道；此时 STA 也无法连接到工作在 DFS 信道上的 AP。
 
     默认配置示例如下::
 

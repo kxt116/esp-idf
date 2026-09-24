@@ -293,8 +293,14 @@ static void hci_packet_complete(BT_HDR *packet){
     uint16_t num_packets = 1;
     uint8_t *stream = packet->data + packet->offset;
 
+    if (packet->len < 1) {
+        return;
+    }
     STREAM_TO_UINT8(type, stream);
     if (type == DATA_TYPE_ACL/* || type == DATA_TYPE_SCO*/) {
+        if (packet->len < 3) {
+            return;
+        }
         STREAM_TO_UINT16(handle, stream);
         handle = handle & HCI_DATA_HANDLE_MASK;
         btsnd_hcic_host_num_xmitted_pkts(1, &handle, &num_packets);
@@ -464,6 +470,10 @@ static void hci_hal_h4_hdl_rx_packet(BT_HDR *packet)
     hci_packet_complete(packet);
 #endif ///C2H_FLOW_CONTROL_INCLUDED == TRUE
 
+    if (packet->len < 1) {
+        osi_free(packet);
+        return;
+    }
     STREAM_TO_UINT8(type, stream);
     packet->offset++;
     packet->len--;
@@ -609,9 +619,9 @@ static int host_recv_pkt_cb(uint8_t *data, uint16_t len)
 #if CONFIG_BT_BLE_LOG_SPI_OUT_HCI_ENABLED
     ble_log_spi_out_hci_write(BLE_LOG_SPI_OUT_SOURCE_HCI_UPSTREAM, data, len);
 #endif // CONFIG_BT_BLE_LOG_SPI_OUT_HCI_ENABLED
-#if CONFIG_BLE_LOG_HOST_SIDE_HCI_LOG_ENABLED
+#if CONFIG_BLE_LOG_HCI_LOG_ENABLED
     ble_log_write_hci(BLE_LOG_HCI_UPSTREAM, data, len);
-#endif /* CONFIG_BLE_LOG_HOST_SIDE_HCI_LOG_ENABLED */
+#endif /* CONFIG_BLE_LOG_HCI_LOG_ENABLED */
     //Target has packet to host, malloc new buffer for packet
     BT_HDR *pkt = NULL;
 #if (BLE_42_SCAN_EN == TRUE)

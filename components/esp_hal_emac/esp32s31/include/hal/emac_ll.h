@@ -111,10 +111,10 @@ extern "C" {
 #define EMAC_LL_DMA_RECEIVE_STOP_INTR                  0x00000100U
 #define EMAC_LL_DMA_RECEIVE_TIMEOUT_INTR               0x00000200U
 #define EMAC_LL_DMA_TRANSMIT_FIRST_BYTE_INTR           0x00000400U
-#define EMAC_LL_DMA_FATAL_BUS_ERROR_INRT               0x00001000U
-#define EMAC_LL_DMA_RECEIVE_FIRST_BYTE_INTR            0x00002000U
-#define EMAC_LL_DMA_ABNORMAL_INTR_SUMMARY              0x00004000U
-#define EMAC_LL_DMA_NORMAL_INTR_SUMMARY                0x00008000U
+#define EMAC_LL_DMA_FATAL_BUS_ERROR_INTR               0x00002000U
+#define EMAC_LL_DMA_RECEIVE_FIRST_BYTE_INTR            0x00004000U
+#define EMAC_LL_DMA_ABNORMAL_INTR_SUMMARY              0x00008000U
+#define EMAC_LL_DMA_NORMAL_INTR_SUMMARY                0x00010000U
 #define EMAC_LL_DMA_GLI_INTR                           0x04000000U
 #define EMAC_LL_DMA_POWER_MANAGE_INTR                  0x10000000U
 #define EMAC_LL_DMA_TIMESTAMP_TRIGGER_INTR             0x20000000U
@@ -1086,7 +1086,7 @@ static inline void emac_ll_clock_enable_ptp(void *ext_regs, soc_periph_emac_ptp_
     case EMAC_PTP_CLK_SRC_XTAL:
         clk_src_val = 0;
         break;
-    case EMAC_PTP_CLK_SRC_PLL_F80M:
+    case EMAC_PTP_CLK_SRC_REF_F80M:
         clk_src_val = 1;
         break;
     default:

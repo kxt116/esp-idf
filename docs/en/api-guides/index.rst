@@ -5,7 +5,6 @@ API Guides
 .. toctree::
    :maxdepth: 1
 
-   app_trace
    startup
    :SOC_BT_SUPPORTED: bt-architecture/index
    :SOC_BT_CLASSIC_SUPPORTED: classic-bt/index
@@ -14,7 +13,7 @@ API Guides
    :SOC_BLE_AUDIO_SUPPORTED: esp-ble-audio/ble-audio-index
    bootloader
    build-system
-   build-system-v2
+   build-system-v2/index
    :SOC_SUPPORT_COEXISTENCE: coexist
    c
    cplusplus
@@ -45,6 +44,7 @@ API Guides
    stdio
    thread-local-storage
    tools/index
+   tracing/index
    unit-tests
    host-apps
    :SOC_USB_OTG_CONSOLE_SUPPORTED: usb-otg-console

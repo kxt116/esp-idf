@@ -36,17 +36,18 @@ ESP_HW_LOG_ATTR_TAG(TAG, "pmu_param");
         .top_pd_en          = 0  \
     }, \
     .clk_power = {            \
+        .xpd_xtalx2    = 0,   \
         .i2c_iso_en    = 0,   \
         .i2c_retention = 0,   \
         .xpd_bb_i2c    = 1,   \
         .xpd_cpll_i2c  = 1,   \
         .xpd_bbpll_i2c = 1,   \
         .xpd_apll_i2c  = 0,   \
-        .xpd_mpll_i2c  = 1,   \
+        .xpd_mpll_i2c  = 0,   \
         .xpd_cpll      = 1,   \
         .xpd_bbpll     = 1,   \
         .xpd_apll      = 0,   \
-        .xpd_mpll      = 1,   \
+        .xpd_mpll      = 0,   \
     }, \
     .xtal = {                 \
         .xpd_xtal      = 1    \

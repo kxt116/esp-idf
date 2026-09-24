@@ -48,6 +48,7 @@
 #include "esp_private/esp_clk_tree_common.h"
 #include "esp_private/esp_dma_utils.h"
 #include "driver/rmt_types.h"
+#include "esp_macros.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -88,9 +89,6 @@ extern "C" {
 #else
 #define RMT_GET_NON_CACHE_ADDR(addr) (addr)
 #endif
-
-#define ALIGN_UP(num, align)    (((num) + ((align) - 1)) & ~((align) - 1))
-#define ALIGN_DOWN(num, align)  ((num) & ~((align) - 1))
 
 #define RMT_USE_RETENTION_LINK  (SOC_RMT_SUPPORT_SLEEP_RETENTION && CONFIG_PM_POWER_DOWN_PERIPHERAL_IN_LIGHT_SLEEP)
 
@@ -183,7 +181,7 @@ struct rmt_channel_t {
 typedef struct {
     rmt_encoder_handle_t encoder;  // encode user payload into RMT symbols
     const void *payload;           // encoder payload
-    size_t payload_bytes;          // payload size
+    size_t payload_size;           // payload size, in bytes (specially for bits encoder, it is in bits)
     int loop_count;                // transaction can be continued in a loop for specific times
     int remain_loop_count;         // user required loop count may exceed hardware limitation, the driver will transfer them in batches
     size_t transmitted_symbol_num; // track the number of transmitted symbols
@@ -232,8 +230,6 @@ struct rmt_rx_channel_t {
     void *user_data;                     // user context
     rmt_rx_trans_desc_t trans_desc;      // transaction description
     size_t num_dma_nodes;                // number of DMA nodes, determined by how big the memory block that user configures
-    size_t dma_int_mem_alignment;        // DMA buffer alignment (both in size and address) for internal RX memory
-    size_t dma_ext_mem_alignment;        // DMA buffer alignment (both in size and address) for external RX memory
     gdma_link_list_handle_t dma_link;    // DMA link list handle
 };
 

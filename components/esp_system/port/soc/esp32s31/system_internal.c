@@ -26,9 +26,9 @@
 #endif
 #include "esp_private/cache_err_int.h"
 #include "hal/uart_ll.h"
+#include "hal/sec_ll.h"
 #include "esp_memory_utils.h"
 
-#define ALIGN_DOWN(val, align)  ((val) & ~((align) - 1))
 extern int _bss_end;
 
 #include "esp32s31/rom/cache.h"
@@ -51,6 +51,10 @@ void esp_system_reset_modules_on_exit(void)
 
     CLEAR_PERI_REG_MASK(HP_SYSTEM_ECC_MEM_LP_CTRL_REG, HP_SYSTEM_ECC_MEM_LP_EN);
     SET_PERI_REG_MASK(HP_SYSTEM_ECC_MEM_LP_CTRL_REG, HP_SYSTEM_ECC_MEM_LP_FORCE_CTRL);
+
+    // Reset crypto clk mux to XTAL (always-on); otherwise if the parent is gated off,
+    // next-boot ROM encryption ops can hang.
+    sec_ll_crypto_clk_src_sel(SOC_MOD_CLK_XTAL);
 }
 
 static void IRAM_ATTR __attribute__((noinline, noreturn)) esp_restart_noos_inner(void)
@@ -147,7 +151,7 @@ void esp_restart_noos(void)
         // If stack is in external RAM (CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM), switch SP to
         // internal RAM before disabling the cache to avoid a "Cache disabled but cached memory
         // region accessed" crash.
-        uint32_t new_sp = ALIGN_DOWN((uint32_t)&_bss_end, 16);
+        uint32_t new_sp = ESP_ALIGN_DOWN((uint32_t)&_bss_end, 16);
         rv_utils_set_sp((void *)new_sp);
     }
 #endif

@@ -40,7 +40,6 @@
 #include "esp_private/sleep_gpio.h"
 #include "esp_private/spi_flash_os.h"
 #include "esp_private/startup_internal.h"
-#include "bootloader_flash.h"
 
 ESP_LOG_ATTR_TAG(TAG, "sleep_gpio");
 
@@ -117,7 +116,7 @@ void esp_sleep_gpio_pupd_config_workaround_unapply(void)
         }
     }
 }
-#endif
+#endif // CONFIG_IDF_TARGET_ESP32
 
 #if CONFIG_ESP_SLEEP_GPIO_RESET_WORKAROUND || CONFIG_PM_SLP_DISABLE_GPIO
 void esp_sleep_config_gpio_isolate(void)
@@ -130,6 +129,21 @@ void esp_sleep_config_gpio_isolate(void)
         }
     }
 
+#if CONFIG_ESP_CONSOLE_UART
+#if CONFIG_ESP_CONSOLE_UART_CUSTOM
+    const gpio_num_t uart_tx_gpio = (CONFIG_ESP_CONSOLE_UART_TX_GPIO >= 0) ? CONFIG_ESP_CONSOLE_UART_TX_GPIO : U0TXD_GPIO_NUM;
+    const gpio_num_t uart_rx_gpio = (CONFIG_ESP_CONSOLE_UART_RX_GPIO >= 0) ? CONFIG_ESP_CONSOLE_UART_RX_GPIO : U0RXD_GPIO_NUM;
+#else
+    const gpio_num_t uart_tx_gpio = U0TXD_GPIO_NUM;
+    const gpio_num_t uart_rx_gpio = U0RXD_GPIO_NUM;
+#endif
+    // Pull up TX and RX lines to avoid garbled data during sleep
+    gpio_sleep_set_pull_mode(uart_tx_gpio, GPIO_PULLUP_ONLY);
+    gpio_sleep_set_pull_mode(uart_rx_gpio, GPIO_PULLUP_ONLY);
+    // TX pin can be isolated, but RX pin may be used for wakeup, so configure RX pin as input
+    gpio_sleep_set_direction(uart_rx_gpio, GPIO_MODE_INPUT);
+#endif
+
 #if CONFIG_ESP_SLEEP_MSPI_NEED_ALL_IO_PU && !SOC_MSPI_HAS_INDEPENT_IOMUX
     gpio_sleep_set_pull_mode(esp_mspi_get_io(ESP_MSPI_IO_CLK), GPIO_PULLUP_ONLY);
     gpio_sleep_set_pull_mode(esp_mspi_get_io(ESP_MSPI_IO_Q),   GPIO_PULLUP_ONLY);
@@ -137,7 +151,7 @@ void esp_sleep_config_gpio_isolate(void)
     gpio_sleep_set_pull_mode(esp_mspi_get_io(ESP_MSPI_IO_HD),  GPIO_PULLUP_ONLY);
     gpio_sleep_set_pull_mode(esp_mspi_get_io(ESP_MSPI_IO_WP),  GPIO_PULLUP_ONLY);
 #if SOC_SPI_MEM_SUPPORT_FLASH_OPI_MODE
-    bool octal_mspi_required = bootloader_flash_is_octal_mode_enabled();
+    bool octal_mspi_required = spi_flash_is_octal_mode_enabled();
 #if CONFIG_SPIRAM_MODE_OCT
     octal_mspi_required |= true;
 #endif // CONFIG_SPIRAM_MODE_OCT
@@ -157,16 +171,7 @@ void esp_sleep_enable_gpio_switch(bool enable)
     ESP_EARLY_LOGI(TAG, "%s automatic switching of GPIO sleep configuration", enable ? "Enable" : "Disable");
 
     uint64_t gpio_sleep_sel_dis_mask = 0;
-#if CONFIG_ESP_CONSOLE_UART
-#if CONFIG_ESP_CONSOLE_UART_CUSTOM
-    const gpio_num_t uart_tx_gpio = (CONFIG_ESP_CONSOLE_UART_TX_GPIO >= 0) ? CONFIG_ESP_CONSOLE_UART_TX_GPIO : U0TXD_GPIO_NUM;
-    const gpio_num_t uart_rx_gpio = (CONFIG_ESP_CONSOLE_UART_RX_GPIO >= 0) ? CONFIG_ESP_CONSOLE_UART_RX_GPIO : U0RXD_GPIO_NUM;
-#else
-    const gpio_num_t uart_tx_gpio = U0TXD_GPIO_NUM;
-    const gpio_num_t uart_rx_gpio = U0RXD_GPIO_NUM;
-#endif
-    gpio_sleep_sel_dis_mask |= BIT64(uart_tx_gpio) | BIT64(uart_rx_gpio);
-#endif
+
     /* If the PSRAM is disable in ESP32xx chips equipped with PSRAM, there will be a large current leakage. */
 #if CONFIG_ESP_SLEEP_PSRAM_LEAKAGE_WORKAROUND && CONFIG_SPIRAM & !SOC_MSPI_HAS_INDEPENT_IOMUX
     const gpio_num_t psram_cs_gpio = (gpio_num_t)esp_mspi_get_io(ESP_MSPI_IO_CS1);
@@ -278,7 +283,7 @@ IRAM_ATTR void esp_sleep_restore_isolated_digital_gpio(void)
 }
 #endif // SOC_GPIO_NEED_SOFT_ISOLATE_DURING_PD
 
-IRAM_ATTR void esp_sleep_isolate_digital_gpio(bool do_backup)
+IRAM_ATTR void esp_sleep_isolate_digital_gpio(bool dslp)
 {
     gpio_hal_context_t gpio_hal = { .dev = GPIO_HAL_GET_HW(GPIO_PORT_0) };
 #if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
@@ -301,7 +306,7 @@ IRAM_ATTR void esp_sleep_isolate_digital_gpio(bool do_backup)
     DRAM_ATTR static volatile uint64_t s_pad_mask = SOC_GPIO_VALID_DIGITAL_IO_PAD_MASK;
     uint64_t pad_mask = s_pad_mask;
 #if SOC_GPIO_NEED_SOFT_ISOLATE_DURING_PD
-    if (do_backup) {
+    if (!dslp) {
         s_gpio_isolate_backup.backuped = 0;
         s_gpio_isolate_backup.pu = 0;
         s_gpio_isolate_backup.pd = 0;
@@ -315,8 +320,10 @@ IRAM_ATTR void esp_sleep_isolate_digital_gpio(bool do_backup)
     while (pad_mask) {
         gpio_num_t gpio_num = (gpio_num_t)__builtin_ctzll(pad_mask);
         if (!(hold_mask & (1ULL << gpio_num)) &&
-            !esp_gpio_is_reserved(BIT64(gpio_num))) {
-            if (do_backup) {
+            // for light sleep, we will skip the reserved GPIOs
+            // for deep sleep, since it does not return and reset the entire digital domain, it should be fine to isolate all digital IOs to minimize the leakage
+            (dslp || !esp_gpio_is_reserved(BIT64(gpio_num)))) {
+            if (!dslp) {
                 gpio_io_config_t io_config;
                 gpio_ll_backup_pad_config_for_sleep_isolate(gpio_num, &io_config);
                 if (io_config.pu) {
@@ -338,8 +345,8 @@ IRAM_ATTR void esp_sleep_isolate_digital_gpio(bool do_backup)
         }
         pad_mask &= pad_mask - 1;
     }
-#else
-    (void)do_backup;
+#else // !SOC_GPIO_NEED_SOFT_ISOLATE_DURING_PD
+    (void)dslp;
     while (pad_mask) {
         gpio_num_t gpio_num = (gpio_num_t)__builtin_ctzll(pad_mask);
         if (!gpio_hal_is_digital_io_hold(&gpio_hal, gpio_num) &&

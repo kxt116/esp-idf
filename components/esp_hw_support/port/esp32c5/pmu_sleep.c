@@ -40,7 +40,7 @@ static uint32_t get_lslp_dbg(void)
     uint32_t chip_version = efuse_hal_chip_revision();
     uint32_t blk_version = efuse_hal_blk_version();
     if ((chip_version == 1 && blk_version >= 1) || (chip_version >= 100 && blk_version >= 2)) {
-        pmu_dbg_atten_lightsleep = efuse_ll_get_lslp_dbg();
+        pmu_dbg_atten_lightsleep = pmu_ll_get_lslp_dbg();
     } else {
         ESP_HW_LOGD(TAG, "lslp dbg not burnt in efuse\n");
     }
@@ -54,7 +54,7 @@ static uint32_t get_lslp_hp_dbias(void)
     uint32_t chip_version = efuse_hal_chip_revision();
     uint32_t blk_version = efuse_hal_blk_version();
     if ((chip_version == 1 && blk_version >= 1) || (chip_version >= 100 && blk_version >= 2)) {
-        pmu_hp_dbias_lightsleep_0v6 = efuse_ll_get_lslp_hp_dbias();
+        pmu_hp_dbias_lightsleep_0v6 = pmu_ll_get_lslp_hp_dbias();
     } else {
         ESP_HW_LOGD(TAG, "lslp hp dbias not burnt in efuse\n");
     }
@@ -68,7 +68,7 @@ static uint32_t get_dslp_dbg(void)
     uint32_t chip_version = efuse_hal_chip_revision();
     uint32_t blk_version = efuse_hal_blk_version();
     if ((chip_version == 1 && blk_version >= 1) || (chip_version >= 100 && blk_version >= 2)) {
-        pmu_dbg_atten_deepsleep = efuse_ll_get_dslp_dbg();
+        pmu_dbg_atten_deepsleep = pmu_ll_get_dslp_dbg();
     } else {
         ESP_HW_LOGD(TAG, "dslp dbg not burnt in efuse\n");
     }
@@ -82,7 +82,7 @@ static uint32_t get_dslp_lp_dbias(void)
     uint32_t chip_version = efuse_hal_chip_revision();
     uint32_t blk_version = efuse_hal_blk_version();
     if ((chip_version == 1 && blk_version >= 1) || (chip_version >= 100 && blk_version >= 2)) {
-        pmu_lp_dbias_deepsleep_0v7 = efuse_ll_get_dslp_lp_dbias();
+        pmu_lp_dbias_deepsleep_0v7 = pmu_ll_get_dslp_lp_dbias();
     } else {
         ESP_HW_LOGD(TAG, "dslp lp dbias not burnt in efuse\n");
     }
@@ -188,14 +188,15 @@ uint32_t pmu_sleep_calculate_hw_wait_time(uint32_t sleep_flags, soc_rtc_slow_clk
 static inline pmu_sleep_param_config_t * pmu_sleep_param_config_default(
         pmu_sleep_param_config_t *param,
         pmu_sleep_power_config_t *power, /* We'll use the runtime power parameter to determine some hardware parameters */
-        const uint32_t sleep_flags,
-        const uint32_t adjustment,
-        soc_rtc_slow_clk_src_t slowclk_src,
-        const uint32_t slowclk_period,
-        const uint32_t fastclk_period
+        pmu_sleep_extra_args_t *args
     )
 {
     const pmu_sleep_machine_constant_t *mc = (pmu_sleep_machine_constant_t *)PMU_instance()->mc;
+    const uint32_t sleep_flags = args->sleep_flags;
+    const uint32_t adjustment = args->adjustment;
+    const soc_rtc_slow_clk_src_t slowclk_src = args->slowclk_src;
+    const uint32_t slowclk_period = args->slowclk_period;
+    const uint32_t fastclk_period = args->fastclk_period;
 
 #if (SOC_PM_PMU_MIN_SLP_SLOW_CLK_CYCLE_FIXED && SOC_PM_SUPPORT_PMU_MODEM_STATE && CONFIG_ESP_WIFI_ENHANCED_LIGHT_SLEEP)
     const uint32_t slowclk_period_fixed = (slowclk_src == SOC_RTC_SLOW_CLK_SRC_RC_SLOW) ? rtc_clk_freq_to_period(SOC_CLK_RC_SLOW_FREQ_APPROX) : slowclk_period;
@@ -231,23 +232,15 @@ static inline pmu_sleep_param_config_t * pmu_sleep_param_config_default(
     return param;
 }
 
-const pmu_sleep_config_t* pmu_sleep_config_default(
-        pmu_sleep_config_t *config,
-        uint32_t sleep_flags,
-        uint32_t clk_flags,
-        uint32_t adjustment,
-        soc_rtc_slow_clk_src_t slowclk_src,
-        uint32_t slowclk_period,
-        uint32_t fastclk_period,
-        bool dslp
-    )
+const pmu_sleep_config_t* pmu_sleep_config_default(pmu_sleep_config_t *config, pmu_sleep_extra_args_t *args, bool dslp)
 {
+    const uint32_t sleep_flags = args->sleep_flags;
     pmu_sleep_power_config_t power_default = PMU_SLEEP_POWER_CONFIG_DEFAULT(sleep_flags);
 
     if (dslp) {
-        config->param.lp_sys.analog_wait_target_cycle  = rtc_time_us_to_slowclk(PMU_LP_ANALOG_WAIT_TARGET_TIME_DSLP_US, slowclk_period);
+        config->param.lp_sys.analog_wait_target_cycle  = rtc_time_us_to_slowclk(PMU_LP_ANALOG_WAIT_TARGET_TIME_DSLP_US, args->slowclk_period);
 
-        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_DSLP_CONFIG_DEFAULT(sleep_flags, clk_flags);
+        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_DSLP_CONFIG_DEFAULT(sleep_flags, args->clk_flags);
 
         config->digital = digital_default;
 
@@ -257,7 +250,7 @@ const pmu_sleep_config_t* pmu_sleep_config_default(
 
         config->analog = analog_default;
     } else {
-        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_LSLP_CONFIG_DEFAULT(sleep_flags, clk_flags);
+        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_LSLP_CONFIG_DEFAULT(sleep_flags, args->clk_flags);
         config->digital = digital_default;
 
         pmu_sleep_analog_config_t analog_default = PMU_SLEEP_ANALOG_LSLP_CONFIG_DEFAULT(sleep_flags);
@@ -297,7 +290,7 @@ const pmu_sleep_config_t* pmu_sleep_config_default(
 
     config->power = power_default;
     pmu_sleep_param_config_t param_default = PMU_SLEEP_PARAM_CONFIG_DEFAULT(sleep_flags);
-    config->param = *pmu_sleep_param_config_default(&param_default, &power_default, sleep_flags, adjustment, slowclk_src, slowclk_period, fastclk_period);
+    config->param = *pmu_sleep_param_config_default(&param_default, &power_default, args);
 
     return config;
 }

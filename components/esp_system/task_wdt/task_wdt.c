@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "freertos/freertos_debug.h"
 #include "esp_err.h"
+#include "esp_macros.h"
 #include "esp_attr.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -22,6 +23,7 @@
 #include "esp_task_wdt.h"
 #include "esp_private/system_internal.h"
 #include "esp_private/crosscore_int.h"
+#include "esp_private/esp_sys_event_app_init.h"
 #include "esp_private/esp_task_wdt.h"
 #include "esp_private/esp_task_wdt_impl.h"
 
@@ -56,6 +58,28 @@ extern bool g_panic_abort;
 
 /* Global flag marking whether the current ISR is a Task Watchdog ISR. */
 bool g_twdt_isr = false;
+
+#if CONFIG_ESP_TASK_WDT_INIT
+ESP_PRE_APP_MAIN_HANDLER_REGISTER(init_task_wdt, 120)
+{
+    (void)user_arg;
+    (void)ctx;
+    esp_task_wdt_config_t config = {
+        .timeout_ms = CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000,
+        .idle_core_mask = 0,
+#if CONFIG_ESP_TASK_WDT_PANIC
+        .trigger_panic = true,
+#endif
+    };
+#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0
+    config.idle_core_mask |= BIT(0);
+#endif
+#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
+    config.idle_core_mask |= BIT(1);
+#endif
+    return esp_task_wdt_init(&config);
+}
+#endif
 
 // --------------------------------------------------- Definitions -----------------------------------------------------
 
@@ -420,11 +444,11 @@ static void task_wdt_timeout_handling(int cores_fail, bool panic)
             esp_crosscore_int_send_twdt_abort(other_core);
             /* We are going to abort, on the other core, we have nothing to
              * do anymore here, just wait until we crash */
-            while (1) {}
+            ESP_INFINITE_LOOP();
         } else if (cores_fail & BIT(other_core)) {
             /* If only the other core is failing, we can tell it to abort. */
             esp_crosscore_int_send_twdt_abort(other_core);
-            while (1) {}
+            ESP_INFINITE_LOOP();
         }
 #endif // !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
         /* Current core is failing, abort right now */

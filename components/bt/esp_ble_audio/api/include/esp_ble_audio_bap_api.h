@@ -395,6 +395,12 @@ esp_err_t esp_ble_audio_bap_unicast_server_unregister_cb(const esp_ble_audio_bap
 /**
  * @brief   Initialize and configure a new ASE.
  *
+ * @note    Direction-agnostic: configures the first free ASE by index. Sink ASEs
+ *          are ordered before source ASEs, so this picks a sink ASE whenever one
+ *          is free and only falls back to a source ASE when all sink ASEs are in
+ *          use. Use esp_ble_audio_bap_unicast_server_config_ase_with_dir() to
+ *          target a specific direction.
+ *
  * @param   conn_handle Connection handle.
  * @param   stream      Configured stream object to be attached to the ASE.
  * @param   codec_cfg   Codec configuration.
@@ -406,6 +412,27 @@ esp_err_t esp_ble_audio_bap_unicast_server_config_ase(uint16_t conn_handle,
                                                       esp_ble_audio_bap_stream_t *stream,
                                                       esp_ble_audio_codec_cfg_t *codec_cfg,
                                                       const esp_ble_audio_bap_qos_cfg_pref_t *qos_pref);
+
+/**
+ * @brief   Initialize and configure a new ASE of a specific direction.
+ *
+ * Like esp_ble_audio_bap_unicast_server_config_ase(), but configures the first
+ * free ASE of the requested direction, letting a server initiate a config on a
+ * source ASE (the direction-agnostic variant picks the first free ASE).
+ *
+ * @param   conn_handle Connection handle.
+ * @param   stream      Configured stream object to be attached to the ASE.
+ * @param   codec_cfg   Codec configuration.
+ * @param   qos_pref    Audio Stream Quality of Service Preference.
+ * @param   dir         ASE direction to configure (sink or source).
+ *
+ * @return  ESP_OK on success, or an error code on failure.
+ */
+esp_err_t esp_ble_audio_bap_unicast_server_config_ase_with_dir(uint16_t conn_handle,
+                                                               esp_ble_audio_bap_stream_t *stream,
+                                                               esp_ble_audio_codec_cfg_t *codec_cfg,
+                                                               const esp_ble_audio_bap_qos_cfg_pref_t *qos_pref,
+                                                               esp_ble_audio_dir_t dir);
 
 /**
  * @brief   Create unicast group.
@@ -1009,8 +1036,21 @@ esp_err_t esp_ble_audio_bap_broadcast_assistant_discover(uint16_t conn_handle);
  * to start scanning itself.
  *
  * @param   conn_handle Connection handle.
- * @param   start_scan  Start scanning if true. If false, the application should
- *                      enable scan itself.
+ * @param   start_scan  Deliver scan results to the `scan` callback if true.
+ *
+ * @note    The application always owns the scanner: start it first with the
+ *          host's own GAP API (esp_ble_gap_start_ext_scan / ble_gap_disc), then
+ *          call this. The BASS Remote Scan Started operation is written either
+ *          way; start_scan only decides whether the Broadcast Audio
+ *          Announcements that scanner reports are also parsed and handed to the
+ *          `scan` member of esp_ble_audio_bap_broadcast_assistant_cb_t.
+ *          Leave that member NULL when passing false. Note the callback carries
+ *          no advertising data, so filtering on anything besides the Broadcast
+ *          ID belongs in the application's scan handler.
+ *
+ * @note    start_scan is therefore redundant with that member being set, and
+ *          esp_ble_audio_bap_broadcast_assistant_scan_stop has no counterpart
+ *          to it. It is kept only for API compatibility.
  *
  * @return  ESP_OK on success, or an error code on failure.
  */
@@ -1257,24 +1297,30 @@ esp_err_t esp_ble_audio_bap_base_get_subgroup_codec_id(const esp_ble_audio_bap_b
 /**
  * @brief   Get the codec configuration data of a subgroup.
  *
+ * @note    The data points into the BASE, and stays valid only as long as it does.
+ *
  * @param   subgroup    The subgroup pointer.
  * @param   data        Pointer that will point to the resulting codec configuration data.
+ * @param   data_len    The length of the @p data (may be 0) on success.
  *
  * @return  ESP_OK on success, or an error code on failure.
  */
 esp_err_t esp_ble_audio_bap_base_get_subgroup_codec_data(const esp_ble_audio_bap_base_subgroup_t *subgroup,
-                                                         uint8_t **data);
+                                                         uint8_t **data, size_t *data_len);
 
 /**
  * @brief   Get the codec metadata of a subgroup.
  *
+ * @note    The metadata points into the BASE, and stays valid only as long as it does.
+ *
  * @param   subgroup    The subgroup pointer.
  * @param   meta        Pointer that will point to the resulting codec metadata.
+ * @param   meta_len    The length of the @p meta (may be 0) on success.
  *
  * @return  ESP_OK on success, or an error code on failure.
  */
 esp_err_t esp_ble_audio_bap_base_get_subgroup_codec_meta(const esp_ble_audio_bap_base_subgroup_t *subgroup,
-                                                         uint8_t **meta);
+                                                         uint8_t **meta, size_t *meta_len);
 
 /**
  * @brief   Store subgroup codec data in a esp_ble_audio_codec_cfg_t.

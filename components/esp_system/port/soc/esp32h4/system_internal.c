@@ -24,9 +24,12 @@
 #include "hal/wdt_hal.h"
 #endif
 #include "hal/uart_ll.h"
+#include "hal/sec_ll.h"
 #include "esp_memory_utils.h"
+#if CONFIG_ESP_SYSTEM_HW_STACK_GUARD && CONFIG_COMPILER_ENABLE_RISCV_ZCMP
+#include "esp_private/hw_stack_guard.h"
+#endif
 
-#define ALIGN_DOWN(val, align)  ((val) & ~((align) - 1))
 extern int _bss_end;
 
 #include "esp32h4/rom/cache.h"
@@ -87,6 +90,10 @@ void esp_system_reset_modules_on_exit(void)
     CLEAR_PERI_REG_MASK(PCR_SHA_CONF_REG, PCR_SHA_RST_EN);
     CLEAR_PERI_REG_MASK(PCR_ECC_MEM_LP_CTRL_REG, PCR_ECC_MEM_LP_EN);
     SET_PERI_REG_MASK(PCR_ECC_MEM_LP_CTRL_REG, PCR_ECC_MEM_FORCE_CTRL);
+
+    // Reset crypto clk mux to XTAL (always-on); otherwise if the parent is gated off,
+    // next-boot ROM encryption ops can hang.
+    sec_ll_crypto_clk_src_sel(SOC_MOD_CLK_XTAL);
 
     // UART's sclk is controlled in the PCR register and does not reset with the UART module. The ROM missed enabling
     // it when initializing the ROM UART. If it is not turned on, it will trigger LP_WDT in the ROM.
@@ -178,7 +185,14 @@ void esp_restart_noos(void)
         // If stack is in external RAM (CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM), switch SP to
         // internal RAM before disabling the cache to avoid a "Cache disabled but cached memory
         // region accessed" crash.
-        uint32_t new_sp = ALIGN_DOWN((uint32_t)&_bss_end, 16);
+
+#if CONFIG_ESP_SYSTEM_HW_STACK_GUARD && CONFIG_COMPILER_ENABLE_RISCV_ZCMP
+        // Stop hw stack guard before changing SP: new SP is outside task stack bounds.
+        // rtc_clk_cpu_set_to_default_config() (called later) uses vPortEnterCritical() via
+        // ENABLE_CLK_GATE, which can trigger DIG-661 (assist-debug interrupt with mstatus.mie=0).
+        esp_hw_stack_guard_monitor_stop();
+#endif
+        uint32_t new_sp = ESP_ALIGN_DOWN((uint32_t)&_bss_end, 16);
         rv_utils_set_sp((void *)new_sp);
     }
 #endif

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2023-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2023-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -17,7 +17,6 @@
 #include "hal/lp_aon_hal.h"
 #include "esp_private/esp_pmu.h"
 #include "pmu_param.h"
-#include "hal/efuse_ll.h"
 #include "hal/efuse_hal.h"
 #include "esp_hw_log.h"
 #include "soc/regi2c_bias.h"
@@ -36,7 +35,7 @@ uint32_t get_slp_lp_dbias(void)
     uint32_t pmu_lp_dbias_sleep_0v7 = PMU_LP_DBIAS_SLEEP_0V7_DEFAULT;
     unsigned blk_version = efuse_hal_blk_version();
     if (blk_version >= 3) {
-        pmu_lp_dbias_sleep_0v7 = efuse_ll_get_dslp_dbias();
+        pmu_lp_dbias_sleep_0v7 = pmu_ll_get_dslp_dbias();
         if (pmu_lp_dbias_sleep_0v7 == 0) {
             pmu_lp_dbias_sleep_0v7 = PMU_LP_DBIAS_SLEEP_0V7_DEFAULT;
             ESP_HW_LOGD(TAG, "slp dbias not burnt in efuse or wrong value was burnt in blk version: %d\n", blk_version);
@@ -57,7 +56,7 @@ void pmu_sleep_enable_regdma_backup(void)
     pmu_hal_hp_set_sleep_active_backup_enable(PMU_instance()->hal);
 }
 
-void pmu_sleep_disable_regdma_backup(void)
+IRAM_ATTR void pmu_sleep_disable_regdma_backup(void)
 {
     assert(PMU_instance()->hal);
     pmu_hal_hp_set_sleep_active_backup_disable(PMU_instance()->hal);
@@ -101,13 +100,12 @@ uint32_t pmu_sleep_calculate_hw_wait_time(uint32_t sleep_flags, soc_rtc_slow_clk
 static inline pmu_sleep_param_config_t * pmu_sleep_param_config_default(
         pmu_sleep_param_config_t *param,
         pmu_sleep_power_config_t *power, /* We'll use the runtime power parameter to determine some hardware parameters */
-        const uint32_t sleep_flags,
-        const uint32_t adjustment,
-        const uint32_t slowclk_period,
-        const uint32_t fastclk_period
+        pmu_sleep_extra_args_t *args
     )
 {
     const pmu_sleep_machine_constant_t *mc = (pmu_sleep_machine_constant_t *)PMU_instance()->mc;
+    const uint32_t slowclk_period = args->slowclk_period;
+    const uint32_t fastclk_period = args->fastclk_period;
 
     param->hp_sys.min_slp_slow_clk_cycle          = rtc_time_us_to_slowclk(mc->hp.min_slp_time_us, slowclk_period);
     param->hp_sys.analog_wait_target_cycle        = rtc_time_us_to_fastclk(mc->hp.analog_wait_time_us, fastclk_period);
@@ -128,20 +126,12 @@ static inline pmu_sleep_param_config_t * pmu_sleep_param_config_default(
     return param;
 }
 
-const pmu_sleep_config_t* pmu_sleep_config_default(
-        pmu_sleep_config_t *config,
-        uint32_t sleep_flags,
-        uint32_t clk_flags,
-        uint32_t adjustment,
-        soc_rtc_slow_clk_src_t slowclk_src,
-        uint32_t slowclk_period,
-        uint32_t fastclk_period,
-        bool dslp
-    )
+const pmu_sleep_config_t* pmu_sleep_config_default(pmu_sleep_config_t *config, pmu_sleep_extra_args_t *args, bool dslp)
 {
+    const uint32_t sleep_flags = args->sleep_flags;
     pmu_sleep_power_config_t power_default = PMU_SLEEP_POWER_CONFIG_DEFAULT(sleep_flags);
     if (dslp) {
-        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_DSLP_CONFIG_DEFAULT(sleep_flags, clk_flags);
+        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_DSLP_CONFIG_DEFAULT(sleep_flags, args->clk_flags);
         config->digital = digital_default;
 
         pmu_sleep_analog_config_t analog_default = PMU_SLEEP_ANALOG_DSLP_CONFIG_DEFAULT(sleep_flags);
@@ -153,7 +143,7 @@ const pmu_sleep_config_t* pmu_sleep_config_default(
             power_default.lp_sys[PMU_MODE_LP_SLEEP].dig_power.bod_source_sel = 1;
         }
     } else {
-        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_LSLP_CONFIG_DEFAULT(sleep_flags, clk_flags);
+        pmu_sleep_digital_config_t digital_default = PMU_SLEEP_DIGITAL_LSLP_CONFIG_DEFAULT(sleep_flags, args->clk_flags);
         config->digital = digital_default;
 
         pmu_sleep_analog_config_t analog_default = PMU_SLEEP_ANALOG_LSLP_CONFIG_DEFAULT(sleep_flags);
@@ -176,7 +166,7 @@ const pmu_sleep_config_t* pmu_sleep_config_default(
     }
     config->power = power_default;
     pmu_sleep_param_config_t param_default = PMU_SLEEP_PARAM_CONFIG_DEFAULT(sleep_flags);
-    config->param = *pmu_sleep_param_config_default(&param_default, &power_default, sleep_flags, adjustment, slowclk_period, fastclk_period);
+    config->param = *pmu_sleep_param_config_default(&param_default, &power_default, args);
     return config;
 }
 

@@ -66,20 +66,20 @@ set pvt default param
 */
 #define PVT_CHANNEL0_SEL        33
 #define PVT_CHANNEL1_SEL        37
-#define PVT_CHANNEL0_CFG        0x13e80
-#define PVT_CHANNEL1_CFG        0x13e80
+#define PVT_CHANNEL0_CFG        0x11fff
+#define PVT_CHANNEL1_CFG        0x17fff
 #define PVT_CHANNEL2_CFG        0x10000
 #define PVT_CMD0                0x24
 #define PVT_CMD1                0x5
 #define PVT_CMD2                0x427
 #define PVT_TARGET              0xffff
 #define PVT_CLK_DIV             1
-#define PVT_DELAY_NUM_HIGH      154
+#define PVT_DELAY_NUM_HIGH      157
 #define PVT_DELAY_NUM_LOW       147
 #define PVT_PUMP_CHANNEL_CODE   1
 #define PVT_PUMP_BITMAP         22
 #define PVT_PUMP_DRV            0
-#define PVT_DELAY_NUM_PUMP      143
+#define PVT_DELAY_NUM_PUMP      139
 
 /**
  * @brief Initialize PVT related parameters
@@ -327,17 +327,14 @@ void rtc_clk_cpu_freq_set_xtal(void);
 
 #ifndef BOOTLOADER_BUILD
 /**
- * @brief Switch root clock source to PLL (only used by sleep) release root clock source locked by PMU
+ * @brief Release root clock source locked by PMU
  *
  * wifi receiving beacon frame in PMU modem state strongly depends on the BBPLL
  * clock, PMU will forcibly lock the root clock source as PLL, when the root
  * clock source of the software system is selected as PLL, we need to release
- * the root clock source locking and switch the root clock source to PLL in the
- * sleep process (a critical section).
- *
- * @param[in] Maximum CPU frequency, in MHz
+ * the root clock source locking in the sleep process (a critical section).
  */
-void rtc_clk_cpu_freq_to_pll_and_pll_lock_release(int cpu_freq_mhz);
+void rtc_clk_modem_pll_lock_release(void);
 #endif
 
 /**

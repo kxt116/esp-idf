@@ -335,7 +335,7 @@ IP_EVENT_STA_LOST_IP
 
 This event arises when the IPV4 address becomes invalid.
 
-IP_EVENT_STA_LOST_IP does not arise immediately after the Wi-Fi disconnects. Instead, it starts an IPV4 address lost timer (configurable via :ref:`CONFIG_ESP_NETIF_LOST_IP_TIMER_ENABLE` and :ref:`CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL`). If the IPV4 address is got before the timer expires, IP_EVENT_STA_LOST_IP does not happen. Otherwise, the event arises when the IPV4 address lost timer expires.
+IP_EVENT_STA_LOST_IP does not arise immediately after the Wi-Fi disconnects. Instead, it starts an IPV4 address lost timer (configurable via :menuitem:`CONFIG_ESP_NETIF_LOST_IP_TIMER_ENABLE` and :menuitem:`CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL`). If the IPV4 address is got before the timer expires, IP_EVENT_STA_LOST_IP does not happen. Otherwise, the event arises when the IPV4 address lost timer expires.
 
 Generally, the application can ignore this event, because it is just a debug event to inform that the IPV4 address is lost.
 
@@ -552,7 +552,7 @@ API :cpp:func:`esp_wifi_set_config()` can be used to configure the AP. And the c
   * - ssid_hidden
     - If ssid_hidden is 1, AP does not broadcast the SSID; otherwise, it does broadcast the SSID.
   * - max_connection
-    - The max number of stations allowed to connect in. {IDF_TARGET_NAME} supports up to {IDF_TARGET_MAX_CONN_STA_NUM} (``ESP_WIFI_MAX_CONN_NUM``) Wi-Fi connections. Please note that soft-AP and ESP-NOW share the same encryption hardware keys, so the max_connection parameter will be affected by the :ref:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM`. The total number of encryption hardware keys is {IDF_TARGET_SUPPORT_ENCRYPT_NUM}, if :ref:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM` <= {IDF_TARGET_SUB_MAX_NUM_FROM_KEYS}, the max_connection can be set up to {IDF_TARGET_MAX_CONN_STA_NUM}, otherwise the max_connection can be set up to ({IDF_TARGET_SUPPORT_ENCRYPT_NUM} - :ref:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM`).
+    - The max number of stations allowed to connect in. {IDF_TARGET_NAME} supports up to {IDF_TARGET_MAX_CONN_STA_NUM} (``ESP_WIFI_MAX_CONN_NUM``) Wi-Fi connections. Please note that soft-AP and ESP-NOW share the same encryption hardware keys, so the max_connection parameter will be affected by the :menuitem:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM`. The total number of encryption hardware keys is {IDF_TARGET_SUPPORT_ENCRYPT_NUM}, if :menuitem:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM` <= {IDF_TARGET_SUB_MAX_NUM_FROM_KEYS}, the max_connection can be set up to {IDF_TARGET_MAX_CONN_STA_NUM}, otherwise the max_connection can be set up to ({IDF_TARGET_SUPPORT_ENCRYPT_NUM} - :menuitem:`CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM`).
   * - beacon_interval
     - Beacon interval; the value is 100 ~ 60000 ms, with default value being 100 ms. If the value is out of range, AP defaults it to 100 ms.
 
@@ -924,6 +924,7 @@ Wi-Fi Bandwidth Mode
 
           1. If the STA connects to an AP on a DFS channel, the SoftAP is allowed to switch to the same DFS channel using CSA (Channel Switch Announcement).
           2. When the STA disconnects, the SoftAP will switch back to a non-DFS channel via CSA to remain compliant with regulations.
+          3. To completely prevent the SoftAP from operating on DFS channels, call :cpp:func:`esp_wifi_set_country()` to set ``policy`` to ``WIFI_COUNTRY_POLICY_MANUAL`` and restrict ``wifi_5g_channel_mask`` to the non-DFS channels of the current country/region. ``wifi_5g_channel_mask`` takes effect only when policy is ``WIFI_COUNTRY_POLICY_MANUAL``. Note: in this case, if the target AP operates on a DFS channel, the STA cannot connect to that AP. See :component_file:`esp_wifi/regulatory/esp_wifi_regulatory.txt` for the DFS channel range of each country/region.
 
 ..
 
@@ -1058,7 +1059,7 @@ Wi-Fi Country Code
       * - policy
         - Country/region policy. When the configured country/region conflicts with that of the connected AP, this field determines which information to use. Details are explained below.
       * - wifi_5g_channel_mask
-        - Bitmask indicating allowed 5 GHz channels for the station/AP. The mapping between channel numbers and bits can be found in :cpp:enum:`wifi_5g_channel_bit_t`.
+        - Bitmask indicating allowed 5 GHz channels for the station/AP. The mapping between channel numbers and bits can be found in :cpp:enum:`wifi_5g_channel_bit_t`. A mask of 0 means 5 GHz channels are allowed according to local regulatory rules. The configured mask takes effect only when ``policy`` is ``WIFI_COUNTRY_POLICY_MANUAL``. To disable DFS channels, restrict the mask to the non-DFS channels of the current country/region; the STA will then be unable to connect to an AP operating on a DFS channel.
 
     A default configuration example::
 

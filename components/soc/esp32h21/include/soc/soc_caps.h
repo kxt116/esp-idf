@@ -36,7 +36,7 @@
 #define SOC_IEEE802154_BLE_ONLY         1
 #define SOC_ASYNC_MEMCPY_SUPPORTED      1
 #define SOC_USB_SERIAL_JTAG_SUPPORTED   1
-// #define SOC_TEMP_SENSOR_SUPPORTED       1    //TODO: [ESP32H21] IDF-11624
+#define SOC_TEMP_SENSOR_SUPPORTED       1
 // #define SOC_SUPPORTS_SECURE_DL_MODE     1
 // #define SOC_ULP_SUPPORTED               1
 #define SOC_EFUSE_KEY_PURPOSE_FIELD     1
@@ -49,7 +49,7 @@
 #define SOC_LEDC_SUPPORTED              1
 #define SOC_I2C_SUPPORTED               1
 #define SOC_SYSTIMER_SUPPORTED          1
-// #define SOC_SUPPORT_COEXISTENCE         1    //TODO: [ESP32H21] IDF-11658, IDF-11659, IDF-11660
+#define SOC_SUPPORT_COEXISTENCE         1
 #define SOC_MPI_SUPPORTED               1
 #define SOC_SHA_SUPPORTED               1
 #define SOC_HMAC_SUPPORTED              1
@@ -61,6 +61,7 @@
 #define SOC_SECURE_BOOT_SUPPORTED       1
 #define SOC_BOD_SUPPORTED               1
 // #define SOC_APM_SUPPORTED               1    //TODO: [ESP32H21] IDF-11494
+#define SOC_RISCV_TRACE_SUPPORTED       1
 #define SOC_PMU_SUPPORTED               1
 #define SOC_RTC_TIMER_SUPPORTED         1
 #define SOC_LP_AON_SUPPORTED            1
@@ -71,7 +72,7 @@
 #define SOC_RTC_WDT_SUPPORTED           1
 #define SOC_SPI_FLASH_SUPPORTED         1
 #define SOC_SPI_EXTERNAL_NOR_FLASH_SUPPORTED    1
-// #define SOC_RNG_SUPPORTED               1    //TODO: [ESP32H21] IDF-11503
+#define SOC_RNG_SUPPORTED               1
 #define SOC_MODEM_CLOCK_SUPPORTED       1
 #define SOC_REGI2C_SUPPORTED           1
 #define SOC_PHY_SUPPORTED               1
@@ -111,7 +112,6 @@
 #define SOC_ADC_MONITOR_SUPPORTED               1
 #define SOC_ADC_DMA_SUPPORTED                   1
 #define SOC_ADC_PERIPH_NUM                      (1U)
-#define SOC_ADC_CHANNEL_NUM(PERIPH_NUM)         (5)
 #define SOC_ADC_ATTEN_NUM                       (4)
 
 /*!< Digital */
@@ -145,6 +145,8 @@
 /*-------------------------- CACHE CAPS --------------------------------------*/
 #define SOC_SHARED_IDCACHE_SUPPORTED            1   //Shared Cache for both instructions and data
 #define SOC_CACHE_FREEZE_SUPPORTED              1
+#define SOC_CACHE_CNT_SUPPORTED                 1
+#define SOC_CACHE_CNT_UNITS_NUM                 2   //Number of cache profile counter units
 
 /*-------------------------- CPU CAPS ----------------------------------------*/
 #define SOC_CPU_CORES_NUM               (1U)
@@ -244,15 +246,18 @@
 #define SOC_I2C_SLAVE_SUPPORT_BROADCAST         (1)
 #define SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE     (1)
 
-// #define SOC_I2C_SUPPORT_SLEEP_RETENTION         (1) // TODO: [ESP32H21] IDF-11579
+#define SOC_I2C_SUPPORT_SLEEP_RETENTION         (1)
 
 /*-------------------------- I2S CAPS ----------------------------------------*/
 #define SOC_I2S_HW_VERSION_2        (1)
 #define SOC_I2S_SUPPORTS_ETM        (1)
 #define SOC_I2S_SUPPORTS_PCM        (1)
 #define SOC_I2S_SUPPORTS_PDM        (1)
-#define SOC_I2S_SUPPORTS_PDM_TX     (1)
+#define SOC_I2S_SUPPORTS_PDM_TX     (1)     // Support to output raw PDM format data
+#define SOC_I2S_SUPPORTS_PCM2PDM    (1)     // Support to write PCM format but output PDM format data with the help of PCM to PDM filter
+#define SOC_I2S_SUPPORTS_PDM_RX     (1)     // Support to input raw PDM format data
 #define SOC_I2S_PDM_MAX_TX_LINES    (2)
+#define SOC_I2S_PDM_MAX_RX_LINES    (1U)
 #define SOC_I2S_SUPPORTS_TDM        (1)
 
 /*-------------------------- LEDC CAPS ---------------------------------------*/
@@ -408,6 +413,7 @@
 #define SOC_ECDSA_SUPPORT_DETERMINISTIC_MODE   (1)
 #define SOC_ECDSA_SUPPORT_HW_DETERMINISTIC_LOOP (1)
 #define SOC_ECDSA_P192_CURVE_DEFAULT_DISABLED   (1)
+// #define SOC_ECDSA_USES_MPI 1 // TODO: [ESP32H21] IDF-16142
 
 /*-------------------------- UART CAPS ---------------------------------------*/
 // ESP32-H21 has 2 UARTs
@@ -433,7 +439,6 @@
 
 /*-------------------------- EXTERNAL COEXISTENCE CAPS -------------------------------------*/
 #define SOC_EXTERNAL_COEX_ADVANCE              (1) /*!< HARDWARE ADVANCED EXTERNAL COEXISTENCE CAPS */
-#define SOC_EXTERNAL_COEX_LEADER_TX_LINE       (0) /*!< EXTERNAL COEXISTENCE TX LINE CAPS */
 
 /*--------------- PHY REGISTER AND MEMORY SIZE CAPS --------------------------*/
 #define SOC_PHY_DIG_REGS_MEM_SIZE       (21*4)
@@ -450,13 +455,13 @@
 #define SOC_PM_SUPPORT_VDDSDIO_PD       (1)
 #define SOC_PM_SUPPORT_TOP_PD           (1)
 #define SOC_PM_PAU_LINK_NUM             (5)
-#define SOC_PM_RETENTION_MODULE_NUM     (32)
 #define SOC_PM_PAU_REGDMA_LINK_CONFIGURABLE        (1)
 #define SOC_PM_CPU_RETENTION_BY_SW                 (1)
 #define SOC_PM_MODEM_RETENTION_BY_REGDMA           (1)
 #define SOC_PM_SUPPORT_DEEPSLEEP_CHECK_STUB_ONLY   (1) /*!<Supports CRC only the stub code in RTC memory */
 
 #define SOC_PM_SUPPORT_PMU_CLK_ICG          (1)
+#define SOC_PM_SUPPORT_PMU_RETENTION_CLK_ICG   (1)
 
 #define SOC_PM_FLASH_KEEP_POWER_IN_LSLP     (1)  /*!<Keep flash on in light sleep to reduce wake latency*/
 
@@ -473,10 +478,12 @@
 #define SOC_RCC_IS_INDEPENDENT                    1       /*!< Reset and Clock Control is independent, thanks to the PCR registers */
 
 /*-------------------------- Temperature Sensor CAPS -------------------------------------*/
-// #define SOC_TEMPERATURE_SENSOR_SUPPORT_FAST_RC                (1)
-// #define SOC_TEMPERATURE_SENSOR_SUPPORT_XTAL                   (1)
-// #define SOC_TEMPERATURE_SENSOR_INTR_SUPPORT                   (1)
-// #define SOC_TEMPERATURE_SENSOR_SUPPORT_ETM                    (1)
+#define SOC_TEMPERATURE_SENSOR_SUPPORT_FAST_RC                (1)
+#define SOC_TEMPERATURE_SENSOR_SUPPORT_XTAL                   (1)
+#define SOC_TEMPERATURE_SENSOR_INTR_SUPPORT                   (1)
+#define SOC_TEMPERATURE_SENSOR_SUPPORT_ETM                    (1)
+#define SOC_TEMPERATURE_SENSOR_SUPPORT_SLEEP_RETENTION        (1)
+#define SOC_TEMPERATURE_SENSOR_UNDER_PD_TOP_DOMAIN            (1)
 
 /*--------------------------------- RNG CAPS --------------------------------------------*/
 // #define SOC_RNG_CLOCK_IS_INDEPENDENT                          (1)
@@ -493,3 +500,11 @@
 #define SOC_BLE_CTE_SUPPORTED           (1)    /*!< Support Bluetooth LE Constant Tone Extension (CTE) */
 #define SOC_BLE_SUBRATE_SUPPORTED       (1)    /*!< Support Bluetooth LE Connection Subrating */
 #define SOC_BLE_PERIODIC_ADV_WITH_RESPONSE  (1)    /*!< Support Bluetooth LE Periodic Advertising with Response (PAwR) */
+
+/*------------------------------------- DEBUG CAPS -------------------------------------*/
+#define SOC_DEBUG_HAVE_OCD_STUB_BINS    (1)
+
+/*-------------------------- RISC-V TRACE CAPS ------------------------------*/
+#define SOC_RISCV_TRACE_PACKET_FORMAT_VER           (100) /*!< Processor Trace v1.0 */
+#define SOC_RISCV_TRACE_PRIV_WIDTH                  (1U) /*!< Bits in the privilege field (privilege_width_p) */
+#define SOC_RISCV_TRACE_ECAUSE_WIDTH                (5) /*!< Bits in the exception cause field (ecause_width_p) */

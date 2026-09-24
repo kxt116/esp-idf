@@ -24,13 +24,23 @@
 #include "ble_log.h"
 #endif /* CONFIG_BLE_LOG_ENABLED */
 
+#if (BT_CONTROLLER_INCLUDED != TRUE)
 static esp_bluedroid_hci_driver_operations_t s_hci_driver_ops = { 0 };
+#endif
 
 esp_err_t esp_bluedroid_attach_hci_driver(const esp_bluedroid_hci_driver_operations_t *p_ops)
 {
+#if (BT_CONTROLLER_INCLUDED == TRUE)
+    ESP_UNUSED(p_ops);
+    return ESP_ERR_NOT_SUPPORTED;
+#else
+    if (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_UNINITIALIZED) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (!p_ops) {
         ESP_LOGE(LOG_TAG, "%s invalid function parameter", __func__);
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_ARG;
     }
 
     s_hci_driver_ops.send                   = p_ops->send;
@@ -38,15 +48,24 @@ esp_err_t esp_bluedroid_attach_hci_driver(const esp_bluedroid_hci_driver_operati
     s_hci_driver_ops.register_host_callback = p_ops->register_host_callback;
 
     return ESP_OK;
+#endif
 }
 
 esp_err_t esp_bluedroid_detach_hci_driver(void)
 {
+#if (BT_CONTROLLER_INCLUDED == TRUE)
+    return ESP_ERR_NOT_SUPPORTED;
+#else
+    if (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_UNINITIALIZED) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     s_hci_driver_ops.send                   = NULL;
     s_hci_driver_ops.check_send_available   = NULL;
     s_hci_driver_ops.register_host_callback = NULL;
 
     return ESP_OK;
+#endif
 }
 
 /****************************************************************
@@ -80,9 +99,9 @@ void hci_host_send_packet(uint8_t *data, uint16_t len)
 #if CONFIG_BT_BLE_LOG_SPI_OUT_HCI_ENABLED
     ble_log_spi_out_hci_write(BLE_LOG_SPI_OUT_SOURCE_HCI_DOWNSTREAM, data, len);
 #endif // CONFIG_BT_BLE_LOG_SPI_OUT_HCI_ENABLED
-#if CONFIG_BLE_LOG_HOST_SIDE_HCI_LOG_ENABLED
+#if CONFIG_BLE_LOG_HCI_LOG_ENABLED
     ble_log_write_hci(BLE_LOG_HCI_DOWNSTREAM, data, len);
-#endif /* CONFIG_BLE_LOG_HOST_SIDE_HCI_LOG_ENABLED */
+#endif /* CONFIG_BLE_LOG_HCI_LOG_ENABLED */
 #if (BT_CONTROLLER_INCLUDED == TRUE)
     esp_vhci_host_send_packet(data, len);
 #else /* BT_CONTROLLER_INCLUDED == TRUE */
@@ -100,11 +119,11 @@ esp_err_t hci_host_register_callback(const esp_bluedroid_hci_driver_callbacks_t 
 
     if (!callback) {
         ESP_LOGE(LOG_TAG, "%s invalid function parameter", __func__);
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_ARG;
     }
 
 #if (BT_CONTROLLER_INCLUDED == TRUE)
-    ret = esp_vhci_host_register_callback((esp_vhci_host_callback_t *)callback);
+    ret = esp_vhci_host_register_callback((const esp_vhci_host_callback_t *)callback);
 #else /* BT_CONTROLLER_INCLUDED == TRUE */
     if (s_hci_driver_ops.register_host_callback) {
         ret = s_hci_driver_ops.register_host_callback(callback);

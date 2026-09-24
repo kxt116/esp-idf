@@ -68,6 +68,7 @@
 #define SOC_SDIO_SLAVE_SUPPORTED        1
 #define SOC_BOD_SUPPORTED               1
 #define SOC_APM_SUPPORTED               1 /*!< Support for APM peripheral */
+#define SOC_RISCV_TRACE_SUPPORTED       1
 #define SOC_PMU_SUPPORTED               1
 #define SOC_PMU_PVT_SUPPORTED           1
 #define SOC_PAU_SUPPORTED               1
@@ -109,7 +110,6 @@
 #define SOC_ADC_MONITOR_SUPPORTED               1
 #define SOC_ADC_DMA_SUPPORTED                   1
 #define SOC_ADC_PERIPH_NUM                      (1U)
-#define SOC_ADC_CHANNEL_NUM(PERIPH_NUM)         (7)
 #define SOC_ADC_ATTEN_NUM                       (4)
 
 /*!< Digital */
@@ -140,6 +140,8 @@
 /*-------------------------- CACHE CAPS --------------------------------------*/
 #define SOC_SHARED_IDCACHE_SUPPORTED            1   //Shared Cache for both instructions and data
 #define SOC_CACHE_FREEZE_SUPPORTED              1
+#define SOC_CACHE_CNT_SUPPORTED                 1
+#define SOC_CACHE_CNT_UNITS_NUM                 2   //Number of cache profile counter units
 
 /*-------------------------- CPU CAPS ----------------------------------------*/
 #define SOC_CPU_CORES_NUM               (1U)
@@ -430,7 +432,6 @@
 
 /*-------------------------- EXTERNAL COEXISTENCE CAPS -------------------------------------*/
 #define SOC_EXTERNAL_COEX_ADVANCE              (1) /*!< HARDWARE ADVANCED EXTERNAL COEXISTENCE CAPS */
-#define SOC_EXTERNAL_COEX_LEADER_TX_LINE       (0) /*!< EXTERNAL COEXISTENCE TX LINE CAPS */
 
 /*--------------- PHY REGISTER AND MEMORY SIZE CAPS --------------------------*/
 #define SOC_PHY_DIG_REGS_MEM_SIZE       (21*4)
@@ -458,9 +459,11 @@
 #define SOC_PM_SUPPORT_MAC_BB_PD        (1)
 #define SOC_PM_SUPPORT_RTC_PERIPH_PD    (1)
 
-#define SOC_PM_SUPPORT_PMU_MODEM_STATE  (1)
+#define SOC_PM_SUPPORT_REGDMA_TRIGGERED_PHY (1)
+#define SOC_PM_SUPPORT_PMU_MODEM_STATE      (1)
 /* macro redefine for pass esp_wifi headers md5sum check */
 #define MAC_SUPPORT_PMU_MODEM_STATE     SOC_PM_SUPPORT_PMU_MODEM_STATE
+#define SOC_PM_REGDMA_MODEM_LINK_PROTECT (1)
 
 #define SOC_PM_SUPPORT_PMU_CLK_ICG          (1)
 #define SOC_PM_SUPPORT_MODEM_CLOCK_DOMAIN_ICG      (1)
@@ -475,12 +478,10 @@
 
 #define SOC_PM_PAU_LINK_NUM                 (4)
 #define SOC_PM_PAU_REGDMA_LINK_MULTI_ADDR   (1)
-#define SOC_PM_PAU_REGDMA_LINK_WIFIMAC      (1)
+#define SOC_PM_PAU_REGDMA_LINK_MODEM      (1)
 
 #define SOC_PM_PAU_REGDMA_UPDATE_CACHE_BEFORE_WAIT_COMPARE  (1)
 #define SOC_PM_PMU_MIN_SLP_SLOW_CLK_CYCLE_FIXED    (1)
-
-#define SOC_PM_RETENTION_MODULE_NUM         (32)
 
 #define SOC_PM_TOP_DEPENDS_ON_RTC_PERIPH    (1)
 
@@ -548,3 +549,8 @@
 
 /*------------------------------------- DEBUG CAPS -------------------------------------*/
 #define SOC_DEBUG_HAVE_OCD_STUB_BINS    (1)
+
+/*-------------------------- RISC-V TRACE CAPS ------------------------------*/
+#define SOC_RISCV_TRACE_PACKET_FORMAT_VER           (100) /*!< Processor Trace v1.0 */
+#define SOC_RISCV_TRACE_PRIV_WIDTH                  (1U) /*!< Bits in the privilege field (privilege_width_p) */
+#define SOC_RISCV_TRACE_ECAUSE_WIDTH                (5) /*!< Bits in the exception cause field (ecause_width_p) */

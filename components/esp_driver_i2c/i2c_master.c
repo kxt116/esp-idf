@@ -805,13 +805,14 @@ static void i2c_master_isr_handler_default(void *arg)
         i2c_master->trans_done = true;
         i2c_master->event = I2C_EVENT_DONE;
     }
-    if (i2c_master->event != I2C_EVENT_ALIVE) {
-        xQueueSendFromISR(i2c_master->event_queue, (void *)&i2c_master->event, &HPTaskAwoken);
-    }
     if (i2c_master->contains_read == true) {
         if (int_mask & I2C_LL_INTR_MST_COMPLETE || int_mask & I2C_LL_INTR_END_DETECT) {
             i2c_isr_receive_handler(i2c_master);
         }
+    }
+    /* Wait for the ISR to finish copying RX FIFO before notifying the waiter so the caller's buffer is complete */
+    if (i2c_master->event != I2C_EVENT_ALIVE) {
+        xQueueSendFromISR(i2c_master->event_queue, (void *)&i2c_master->event, &HPTaskAwoken);
     }
 
     if (i2c_master->async_trans) {
@@ -907,6 +908,9 @@ static esp_err_t i2c_master_bus_destroy(i2c_master_bus_handle_t bus_handle)
             if (err == ESP_OK) {
                 err = release_ret;
             }
+            // Non-OK here means interrupt teardown did not complete, so the ISR
+            // may still reference i2c_master and its wrapper-owned resources.
+            return err;
         }
     }
 
@@ -921,10 +925,6 @@ static esp_err_t i2c_master_bus_destroy(i2c_master_bus_handle_t bus_handle)
     if (i2c_master->event_queue) {
         vQueueDeleteWithCaps(i2c_master->event_queue);
         i2c_master->event_queue = NULL;
-    }
-    if (i2c_master->queues_storage) {
-        free(i2c_master->queues_storage);
-        i2c_master->queues_storage = NULL;
     }
     free(i2c_master->i2c_async_ops);
     i2c_master->i2c_async_ops = NULL;
@@ -1059,7 +1059,8 @@ esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *bus_config, i2c_mast
     ESP_RETURN_ON_FALSE(bus_config->flags.allow_pd == 0, ESP_ERR_NOT_SUPPORTED, TAG, "not able to power down in light sleep");
 #endif // SOC_I2C_SUPPORT_SLEEP_RETENTION
 
-    i2c_master = heap_caps_calloc(1, sizeof(i2c_master_bus_t) + 20 * sizeof(i2c_transaction_t), I2C_MEM_ALLOC_CAPS);
+    // always allocate memory from internal memory because the driver object contains atomic variables
+    i2c_master = heap_caps_calloc(1, sizeof(i2c_master_bus_t) + 20 * sizeof(i2c_transaction_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
     ESP_GOTO_ON_FALSE(i2c_master, ESP_ERR_NO_MEM, err, TAG, "no memory for i2c master bus");
 
@@ -1134,13 +1135,8 @@ esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *bus_config, i2c_mast
         i2c_master->trans_finish = true;
         i2c_master->new_queue = true;
         i2c_master->queue_size = bus_config->trans_queue_depth;
-        i2c_master->queues_storage = (uint8_t*)heap_caps_calloc(bus_config->trans_queue_depth * I2C_TRANS_QUEUE_MAX, sizeof(i2c_transaction_t), I2C_MEM_ALLOC_CAPS);
-        ESP_GOTO_ON_FALSE(i2c_master->queues_storage, ESP_ERR_NO_MEM, err, TAG, "no mem for queue storage");
-        i2c_transaction_t **pp_trans_desc = (i2c_transaction_t **)i2c_master->queues_storage;
         for (int i = 0; i < I2C_TRANS_QUEUE_MAX; i++) {
             i2c_master->trans_queues[i] = xQueueCreateWithCaps(bus_config->trans_queue_depth, sizeof(i2c_transaction_t), I2C_MEM_ALLOC_CAPS);
-
-            pp_trans_desc += bus_config->trans_queue_depth;
             // sanity check
             assert(i2c_master->trans_queues[i]);
         }

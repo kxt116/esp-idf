@@ -43,6 +43,12 @@ else()
     set(CMAKE_C_COMPILER ${_CMAKE_TOOLCHAIN_PREFIX}gcc)
     set(CMAKE_CXX_COMPILER ${_CMAKE_TOOLCHAIN_PREFIX}g++)
     set(CMAKE_ASM_COMPILER ${_CMAKE_TOOLCHAIN_PREFIX}gcc)
+    # Use the gcc-ar/gcc-ranlib wrappers so that the LTO plugin is loaded when
+    # creating and indexing static archives. This is required for link-time
+    # optimization (CONFIG_COMPILER_LTO_LINKTIME) to work across static libraries;
+    # plain ar/ranlib do not record the LTO symbols in the archive index.
+    set(CMAKE_AR ${_CMAKE_TOOLCHAIN_PREFIX}gcc-ar)
+    set(CMAKE_RANLIB ${_CMAKE_TOOLCHAIN_PREFIX}gcc-ranlib)
 endif()
 
 # Handle different execution contexts for the toolchain file.
@@ -60,7 +66,12 @@ endif()
 #    directory as the toolchain file. We simply set IDF_TOOLCHAIN_BUILD_DIR to
 #    point to that existing directory.
 if(_idf_toolchain_dir STREQUAL _current_toolchain_dir)
-    set(IDF_TOOLCHAIN_BUILD_DIR "${CMAKE_BINARY_DIR}/toolchain"
+    # Create then REALPATH so cached value matches symlink-resolved spelling used
+    # later when comparing @response-file paths (see toolchain_flags.cmake).
+    set(_idf_toolchain_build_dir "${CMAKE_BINARY_DIR}/toolchain")
+    file(MAKE_DIRECTORY "${_idf_toolchain_build_dir}")
+    file(REAL_PATH "${_idf_toolchain_build_dir}" _idf_toolchain_build_dir)
+    set(IDF_TOOLCHAIN_BUILD_DIR "${_idf_toolchain_build_dir}"
         CACHE PATH "Path to toolchain build directory containing response files and toolchain file copy" FORCE)
 
     # Copy toolchain file into the build directory and update CMAKE_TOOLCHAIN_FILE
@@ -68,7 +79,6 @@ if(_idf_toolchain_dir STREQUAL _current_toolchain_dir)
     # CMAKE_BINARY_DIR values between base IDF-project builds and external projects.
     # For external project builds, compiler response files are located in the same
     # directory as CMAKE_TOOLCHAIN_FILE, making them easy to find.
-    file(MAKE_DIRECTORY "${IDF_TOOLCHAIN_BUILD_DIR}")
     file(COPY "${CMAKE_TOOLCHAIN_FILE}" DESTINATION "${IDF_TOOLCHAIN_BUILD_DIR}")
     set(CMAKE_TOOLCHAIN_FILE "${IDF_TOOLCHAIN_BUILD_DIR}/${_toolchain_filename}")
 

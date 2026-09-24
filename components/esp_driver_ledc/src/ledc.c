@@ -26,6 +26,7 @@
 #include "esp_private/esp_gpio_reserve.h"
 #include "esp_memory_utils.h"
 #include "esp_private/sleep_retention.h"
+#include "esp_private/ledc_priv.h"
 
 static __attribute__((unused)) const char *LEDC_TAG = "ledc";
 
@@ -699,7 +700,7 @@ static esp_err_t ledc_set_timer_div(ledc_mode_t speed_mode, ledc_timer_t timer_n
         if (p_ledc_obj[speed_mode]->glb_clk != glb_clk) {
             // TODO: release old glb_clk (if not UNINIT), and acquire new glb_clk [clk_tree]
             p_ledc_obj[speed_mode]->glb_clk = glb_clk;
-            ESP_RETURN_ON_ERROR(esp_clk_tree_enable_src((soc_module_clk_t)glb_clk, true), LEDC_TAG, "clock source enable failed");
+            ESP_RETURN_ON_ERROR(esp_clk_tree_acquire_src((soc_module_clk_t)glb_clk), LEDC_TAG, "clock source enable failed");
             PERIPH_RCC_ATOMIC() {
                 ledc_hal_set_slow_clk_sel(&(p_ledc_obj[speed_mode]->ledc_hal), glb_clk);
             }
@@ -899,7 +900,7 @@ esp_err_t ledc_channel_config(const ledc_channel_config_t *ledc_conf)
     else if (new_speed_mode_ctx_created) {
         portENTER_CRITICAL(&ledc_spinlock);
         if (p_ledc_obj[speed_mode]->glb_clk == LEDC_SLOW_CLK_UNINIT) {
-            esp_clk_tree_enable_src((soc_module_clk_t)LEDC_LL_GLOBAL_CLK_DEFAULT, true);
+            esp_clk_tree_acquire_src((soc_module_clk_t)LEDC_LL_GLOBAL_CLK_DEFAULT);
             ledc_hal_set_slow_clk_sel(&(p_ledc_obj[speed_mode]->ledc_hal), LEDC_LL_GLOBAL_CLK_DEFAULT);
         }
         portEXIT_CRITICAL(&ledc_spinlock);
@@ -1008,7 +1009,7 @@ esp_err_t ledc_channel_config(const ledc_channel_config_t *ledc_conf)
 
         // 3. keep related module integrated clock gating on during sleep
 #if SOC_PM_SUPPORT_PMU_CLK_ICG
-        esp_sleep_clock_config(ESP_SLEEP_CLOCK_LEDC, ESP_SLEEP_CLOCK_OPTION_UNGATE);
+        esp_sleep_clock_config(ESP_SLEEP_CLOCK_LEDC0, ESP_SLEEP_CLOCK_OPTION_UNGATE);
         esp_sleep_clock_config(ESP_SLEEP_CLOCK_IOMUX, ESP_SLEEP_CLOCK_OPTION_UNGATE);
 #endif
     }

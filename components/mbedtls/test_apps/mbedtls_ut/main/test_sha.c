@@ -112,12 +112,6 @@ TEST_CASE("Test esp_sha()", "[hw_crypto]")
 #endif
 }
 
-/* NOTE: This test attempts to mmap 1MB of flash starting from address 0x00, which overlaps
- * the entire TEE protected region, causing the mmap operation to fail and triggering an
- * exception in the subsequent steps.
- */
-#if !CONFIG_SECURE_ENABLE_TEE
-
 TEST_CASE("Test esp_sha() function with long input", "[hw_crypto]")
 {
     int r = -1;
@@ -138,7 +132,7 @@ TEST_CASE("Test esp_sha() function with long input", "[hw_crypto]")
     const size_t LEN = 1024 * 1024;
 
     /* mmap() 1MB of flash, we don't care what it is really */
-    esp_err_t err = spi_flash_mmap(0x0, LEN, SPI_FLASH_MMAP_DATA, &ptr, &handle);
+    esp_err_t err = spi_flash_mmap(0x0, LEN, SPI_FLASH_MMAP_FLAG_DATA | SPI_FLASH_MMAP_FLAG_BLOCKS_WRITE, &ptr, &handle);
 
     TEST_ASSERT_EQUAL_HEX32(ESP_OK, err);
     TEST_ASSERT_NOT_NULL(ptr);
@@ -176,4 +170,3 @@ TEST_CASE("Test esp_sha() function with long input", "[hw_crypto]")
 }
 
 #endif
-#endif // SOC_SHA_SUPPORTED && CONFIG_MBEDTLS_HARDWARE_SHA

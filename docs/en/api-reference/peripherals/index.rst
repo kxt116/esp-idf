@@ -32,7 +32,7 @@ Peripherals API
     lcd/index
     :SOC_GP_LDO_SUPPORTED: ldo_regulator
     :SOC_LEDC_SUPPORTED: ledc
-    :SOC_MCPWM_SUPPORTED: mcpwm
+    :SOC_MCPWM_SUPPORTED: mcpwm/index
     :SOC_PARLIO_SUPPORTED: parlio/index
     :SOC_PCNT_SUPPORTED: pcnt
     :SOC_PPA_SUPPORTED: ppa
@@ -42,6 +42,7 @@ Peripherals API
     :SOC_GPSPI_SUPPORTED: sdspi_host
     :SOC_SDIO_SLAVE_SUPPORTED: sdio_slave
     :SOC_SDM_SUPPORTED: sdm
+    :SOC_SHA_SUPPORT_SM3: sm3
     :SOC_SPI_FLASH_SUPPORTED: spi_flash/index
     :SOC_GPSPI_SUPPORTED: spi_master
     :SOC_GPSPI_SUPPORTED: spi_slave

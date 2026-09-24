@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2024-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2024-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -39,11 +39,11 @@
 #endif
 #define DECLARE_PRIVATE_IDENTIFIERS
 #include "psa/crypto.h"
-#include "bootloader_flash_priv.h"
+#include "esp_private/bootloader_flash_internal.h"
 #include "esp_attestation_utils.h"
+#include "esp_macros.h"
 
 #define SECURE_BOOT_V2       (0x02)
-#define ALIGN_UP(num, align) (((num) + ((align)-1)) & ~((align)-1))
 
 static const char *TAG = "esp_att_utils";
 
@@ -71,6 +71,21 @@ static size_t digest_type_to_len(esp_att_part_digest_type_t digest)
 }
 
 #if ESP_TEE_BUILD
+#define DIGEST_CHUNK_LEN (1024)
+
+static psa_status_t hash_update_chunked(psa_hash_operation_t *hash_op, const void *data, uint32_t len)
+{
+    psa_status_t status = PSA_SUCCESS;
+
+    for (uint32_t offset = 0; offset < len; offset += DIGEST_CHUNK_LEN) {
+        status = psa_hash_update(hash_op, (const uint8_t *)data + offset, MIN(DIGEST_CHUNK_LEN, len - offset));
+        if (status != PSA_SUCCESS) {
+            break;
+        }
+    }
+
+    return status;
+}
 
 static esp_err_t read_partition(uint32_t offset, void *buf, size_t size)
 {
@@ -99,12 +114,12 @@ esp_err_t get_flash_contents_sha256(uint32_t flash_offset, uint32_t len, uint8_t
             psa_hash_abort(&hash_op);
             return ESP_FAIL;
         }
-        status = psa_hash_update(&hash_op, image, mmap_len);
+        status = hash_update_chunked(&hash_op, image, mmap_len);
+        esp_tee_flash_munmap(image);
         if (status != PSA_SUCCESS) {
             psa_hash_abort(&hash_op);
             return ESP_FAIL;
         }
-        esp_tee_flash_munmap(image);
 
         flash_offset += mmap_len;
         len -= mmap_len;
@@ -305,7 +320,7 @@ static esp_err_t get_part_digest(const esp_partition_pos_t *pos, esp_att_part_di
     memcpy(part_digest->calc_digest, digest, digest_len);
 
 #if CONFIG_SECURE_BOOT_V2_ENABLED
-    uint32_t signed_image_len = ALIGN_UP(metadata.image_len, FLASH_SECTOR_SIZE);
+    uint32_t signed_image_len = ESP_ALIGN_UP(metadata.image_len, FLASH_SECTOR_SIZE);
 
     if (signed_image_len % CONFIG_MMU_PAGE_SIZE == 0) {
         part_digest->secure_padding = true;

@@ -33,6 +33,7 @@ set(COMPONENTS
     partition_table
     soc
     bootloader_support
+    esp_image_verify
     log
     spi_flash
     micro-ecc

@@ -182,8 +182,6 @@ extern "C" {
 enum bt_iso_state {
     /** Channel disconnected */
     BT_ISO_STATE_DISCONNECTED,
-    /** Channel is pending ACL encryption before connecting */
-    BT_ISO_STATE_ENCRYPT_PENDING,
     /** Channel in connecting state */
     BT_ISO_STATE_CONNECTING,
     /** Channel ready for upper layer traffic on it */
@@ -213,17 +211,6 @@ struct bt_iso_chan {
     struct bt_iso_chan_qos *qos;
     /** Channel state */
     enum bt_iso_state state;
-    /**
-     * @brief The required security level of the channel
-     *
-     * This value can be set as the central before connecting a CIS
-     * with bt_iso_chan_connect().
-     * The value is overwritten to @ref bt_iso_server::sec_level for the
-     * peripheral once a channel has been accepted.
-     *
-     * Only available when @kconfig{CONFIG_BT_SMP} is enabled.
-     */
-    bt_security_t required_sec_level;
     /** @internal Node used internally by the stack */
     sys_snode_t node;
 };
@@ -784,13 +771,6 @@ struct bt_iso_accept_info {
 /** @brief ISO Server structure. */
 struct bt_iso_server {
     /**
-     * @brief Required minimum security level.
-     *
-     * Only available when @kconfig{CONFIG_BT_SMP} is enabled.
-     */
-    bt_security_t sec_level;
-
-    /**
      * @brief Server accept callback
      *
      * This callback is called whenever a new incoming connection requires authorization.
@@ -814,7 +794,7 @@ struct bt_iso_server {
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_server_register_safe(struct bt_iso_server *server);
+int bt_iso_server_register(struct bt_iso_server *server);
 
 /**
  * @brief Unregister ISO server.
@@ -825,7 +805,7 @@ int bt_iso_server_register_safe(struct bt_iso_server *server);
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_server_unregister_safe(struct bt_iso_server *server);
+int bt_iso_server_unregister(struct bt_iso_server *server);
 
 /**
  * @brief Creates a CIG as a central
@@ -841,7 +821,7 @@ int bt_iso_server_unregister_safe(struct bt_iso_server *server);
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_cig_create_safe(const struct bt_iso_cig_param *param, struct bt_iso_cig **out_cig);
+int bt_iso_cig_create(const struct bt_iso_cig_param *param, struct bt_iso_cig **out_cig);
 
 /**
  * @brief Reconfigure a CIG as a central
@@ -863,7 +843,7 @@ int bt_iso_cig_create_safe(const struct bt_iso_cig_param *param, struct bt_iso_c
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_cig_reconfigure_safe(struct bt_iso_cig *cig, const struct bt_iso_cig_param *param);
+int bt_iso_cig_reconfigure(struct bt_iso_cig *cig, const struct bt_iso_cig_param *param);
 
 /**
  * @brief Terminates a CIG as a central
@@ -874,7 +854,7 @@ int bt_iso_cig_reconfigure_safe(struct bt_iso_cig *cig, const struct bt_iso_cig_
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_cig_terminate_safe(struct bt_iso_cig *cig);
+int bt_iso_cig_terminate(struct bt_iso_cig *cig);
 
 /**
  * @brief Connect ISO channels on ACL connections
@@ -914,7 +894,6 @@ int bt_iso_cig_terminate_safe(struct bt_iso_cig *cig);
  *         connected.
  */
 int bt_iso_chan_connect(const struct bt_iso_connect_param *param, size_t count);
-int bt_iso_chan_connect_safe(const struct bt_iso_connect_param *param, size_t count);
 
 /**
  * @brief Disconnect connected ISO channel
@@ -935,7 +914,7 @@ int bt_iso_chan_connect_safe(const struct bt_iso_connect_param *param, size_t co
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_chan_disconnect_safe(struct bt_iso_chan *chan);
+int bt_iso_chan_disconnect(struct bt_iso_chan *chan);
 
 /**
  * @brief Send data to ISO channel without timestamp
@@ -954,9 +933,11 @@ int bt_iso_chan_disconnect_safe(struct bt_iso_chan *chan);
  *                 each call to this function and at least once per SDU
  *                 interval for a specific channel.
  *
- * @return Number of octets sent in case of success or negative value in case of error.
+ * @note Unlike the upstream API, this returns 0 rather than the octet count.
+ *
+ * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_chan_send_safe(struct bt_iso_chan *chan, struct net_buf *buf, uint16_t seq_num);
+int bt_iso_chan_send(struct bt_iso_chan *chan, struct net_buf *buf, uint16_t seq_num);
 
 /**
  * @brief Send data to ISO channel with timestamp
@@ -978,10 +959,12 @@ int bt_iso_chan_send_safe(struct bt_iso_chan *chan, struct net_buf *buf, uint16_
  *                 This value can be used to transmit multiple
  *                 SDUs in the same SDU interval in a CIG or BIG.
  *
- * @return Number of octets sent in case of success or negative value in case of error.
+ * @note Unlike the upstream API, this returns 0 rather than the octet count.
+ *
+ * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_chan_send_ts_safe(struct bt_iso_chan *chan, struct net_buf *buf, uint16_t seq_num,
-                             uint32_t ts);
+int bt_iso_chan_send_ts(struct bt_iso_chan *chan, struct net_buf *buf, uint16_t seq_num,
+                        uint32_t ts);
 
 /**
  * @brief Sets up the ISO data path for a ISO channel
@@ -1004,8 +987,8 @@ int bt_iso_chan_send_ts_safe(struct bt_iso_chan *chan, struct net_buf *buf, uint
  * @retval -EACCES The controller rejected the request as disallowed
  * @retval -ENOEXEC Unexpected error occurred
  */
-int bt_iso_setup_data_path_safe(const struct bt_iso_chan *chan, uint8_t dir,
-                                const struct bt_iso_chan_path *path);
+int bt_iso_setup_data_path(const struct bt_iso_chan *chan, uint8_t dir,
+                           const struct bt_iso_chan_path *path);
 
 /**
  * @brief Removes the ISO data path for a ISO channel
@@ -1045,7 +1028,7 @@ int bt_iso_setup_data_path_safe(const struct bt_iso_chan *chan, uint8_t dir,
  * @retval -EACCES The controller rejected the request as disallowed
  * @retval -ENOEXEC Unexpected error occurred
  */
-int bt_iso_remove_data_path_safe(const struct bt_iso_chan *chan, uint8_t dir);
+int bt_iso_remove_data_path(const struct bt_iso_chan *chan, uint8_t dir);
 
 /** @brief ISO Unicast TX Info Structure */
 struct bt_iso_unicast_tx_info {
@@ -1222,7 +1205,7 @@ struct bt_iso_info {
  *
  * @return Zero on success or (negative) error code on failure.
  */
-int bt_iso_chan_get_info_safe(const struct bt_iso_chan *chan, struct bt_iso_info *info);
+int bt_iso_chan_get_info(const struct bt_iso_chan *chan, struct bt_iso_info *info);
 
 /**
  * @brief Get ISO transmission timing info
@@ -1239,7 +1222,7 @@ int bt_iso_chan_get_info_safe(const struct bt_iso_chan *chan, struct bt_iso_info
  *
  * @return Zero on success or (negative) error code on failure.
  */
-int bt_iso_chan_get_tx_sync_safe(const struct bt_iso_chan *chan, struct bt_iso_tx_info *info);
+int bt_iso_chan_get_tx_sync(const struct bt_iso_chan *chan, struct bt_iso_tx_info *info);
 
 /**
  * @brief Struct to hold the Broadcast Isochronous Group callbacks
@@ -1275,7 +1258,7 @@ struct bt_iso_big_cb {
  * @retval -EINVAL if @p cb is NULL
  * @retval -EEXIST if @p cb is already registered
  */
-int bt_iso_big_register_cb_safe(struct bt_iso_big_cb *cb);
+int bt_iso_big_register_cb(struct bt_iso_big_cb *cb);
 
 /**
  * @brief Creates a BIG as a broadcaster
@@ -1290,8 +1273,6 @@ int bt_iso_big_register_cb_safe(struct bt_iso_big_cb *cb);
  */
 int bt_iso_big_create(struct bt_le_ext_adv *padv, struct bt_iso_big_create_param *param,
                       struct bt_iso_big **out_big);
-int bt_iso_big_create_safe(struct bt_le_ext_adv *padv, struct bt_iso_big_create_param *param,
-                           struct bt_iso_big **out_big);
 
 /**
  * @brief Terminates a BIG as a broadcaster or receiver
@@ -1303,7 +1284,7 @@ int bt_iso_big_create_safe(struct bt_le_ext_adv *padv, struct bt_iso_big_create_
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_big_terminate_safe(struct bt_iso_big *big);
+int bt_iso_big_terminate(struct bt_iso_big *big);
 
 /**
  * @brief Creates a BIG as a receiver
@@ -1314,8 +1295,8 @@ int bt_iso_big_terminate_safe(struct bt_iso_big *big);
  *
  * @return 0 in case of success or negative value in case of error.
  */
-int bt_iso_big_sync_safe(struct bt_le_per_adv_sync *sync, struct bt_iso_big_sync_param *param,
-                         struct bt_iso_big **out_big);
+int bt_iso_big_sync(struct bt_le_per_adv_sync *sync, struct bt_iso_big_sync_param *param,
+                    struct bt_iso_big **out_big);
 
 #ifdef __cplusplus
 }

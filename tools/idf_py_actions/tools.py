@@ -19,6 +19,8 @@ from typing import cast
 import rich_click as click
 import yaml
 from esp_idf_monitor import get_ansi_converter
+from esp_pylib.logger import log
+from rich.markup import escape
 
 from idf_py_actions.errors import NoSerialPortFoundError
 
@@ -34,6 +36,12 @@ SHELL_COMPLETE_VAR = '_IDF.PY_COMPLETE'
 
 # was shell completion invoked?
 SHELL_COMPLETE_RUN = SHELL_COMPLETE_VAR in os.environ
+
+# During shell completion idf.py must stay silent: any diagnostic written to stdout/stderr
+# corrupts the completion output. Silence the shared logger once instead of guarding every
+# call site (this is what the old print_warning() helper did via its SHELL_COMPLETE_RUN check).
+if SHELL_COMPLETE_RUN:
+    log.set_verbosity('SILENT')
 
 
 # The ctx dict "abuses" how python evaluates default parameter values.
@@ -91,7 +99,7 @@ def idf_version_from_cmake() -> str | None:
 
         return f'v{ver["MAJOR"]}.{ver["MINOR"]}.{ver["PATCH"]}'
     except (KeyError, OSError):
-        sys.stderr.write('WARNING: Cannot find ESP-IDF version in version.cmake\n')
+        log.warn('Cannot find ESP-IDF version in version.cmake')
         return None
 
 
@@ -123,32 +131,44 @@ def idf_version() -> str | None:
         )
     except Exception:
         # if failed, then try to parse cmake.version file
-        sys.stderr.write('WARNING: Git version unavailable, reading from source\n')
+        log.warn('Git version unavailable, reading from source')
         version = idf_version_from_cmake()
 
     return version
 
 
-def get_default_serial_port() -> Any:
+def get_default_esp(target: str | None = None) -> Any:
+    """
+    Detect a connected Espressif device.
+
+    If the target is not given, it is taken from the build context, which is empty unless ensure_build_directory() was
+    called. Without a known target any Espressif device is accepted.
+    """
     # Import is done here in order to move it after the check_environment()
     # ensured that pyserial has been installed
     try:
         import esptool
 
+        target = target or get_build_context().get('proj_desc', {}).get('target')
+
         ports = esptool.get_port_list()
         # high baud rate could cause the failure of creation of the connection
         esp = esptool.get_default_connected_device(
-            serial_list=ports, port=None, connect_attempts=4, initial_baud=115200
+            serial_list=ports,
+            port=None,
+            connect_attempts=4,
+            initial_baud=115200,
+            chip=target or 'auto',
         )
         if esp is None:
+            device = f'{target} device' if target else 'serial port'
             raise NoSerialPortFoundError(
-                "No serial ports found. Connect a device, or use '-p PORT' option to set a specific port."
+                f"No {device} found. Connect a device, or use '-p PORT' option to set a specific port."
             )
 
-        serial_port = esp.serial_port
         esp._port.close()
 
-        return serial_port
+        return esp
 
     except NoSerialPortFoundError:
         raise
@@ -156,32 +176,55 @@ def get_default_serial_port() -> Any:
         raise FatalError(f'An exception occurred during detection of the serial port: {e}')
 
 
-# function prints warning when autocompletion is not being performed
-# set argument stream to sys.stderr for errors and exceptions
-def print_warning(message: str, stream: TextIO | None = None) -> None:
-    if not SHELL_COMPLETE_RUN:
-        print(message, file=stream or sys.stderr)
+def get_default_serial_port(target: str | None = None) -> Any:
+    """
+    Detect a serial port with a connected device.
+
+    Ports with a device not matching the target are skipped. If the target is not given,
+    it is taken from the build context, which is empty unless ensure_build_directory() was
+    called. Without a known target any Espressif device is accepted.
+    """
+    return get_default_esp(target).serial_port
 
 
-def color_print(message: str, color: str, newline: str | None = '\n') -> None:
-    """Print a message to stderr with colored highlighting"""
-    ansi_normal = '\033[0m'
-    sys.stderr.write(f'{color}{message}{ansi_normal}{newline}')
-    sys.stderr.flush()
+def get_selected_target(args: 'PropertyDict') -> str | None:
+    """
+    Return the target name if a project target has been explicitly selected instead of
+    relying on the implicit default target (esp32). Return None otherwise.
 
+    The target may come from the IDF_TARGET environment variable, a -DIDF_TARGET command
+    line define, the project sdkconfig, a sdkconfig.defaults file, or the CMakeCache.txt
+    from a previous build (mirroring how CMake guesses the target). This has to be
+    evaluated before the project is (re)configured, because configuration generates a
+    sdkconfig pinned to the (possibly default) target.
+    """
+    cache_cmdl = _parse_cmdl_cmakecache(args.define_cache_entry)
 
-def yellow_print(message: str, newline: str | None = '\n') -> None:
-    ansi_yellow = '\033[0;33m'
-    color_print(message, ansi_yellow, newline)
+    target = (
+        os.environ.get('IDF_TARGET')
+        or cache_cmdl.get('IDF_TARGET')
+        or get_sdkconfig_value(get_sdkconfig_filename(args, cache_cmdl), 'CONFIG_IDF_TARGET')
+    )
+    if target:
+        return target
 
+    sdkconfig_defaults = cache_cmdl.get('SDKCONFIG_DEFAULTS') or os.environ.get('SDKCONFIG_DEFAULTS')
+    default_files = sdkconfig_defaults.split(';') if sdkconfig_defaults else ['sdkconfig.defaults']
+    for default_file in default_files:
+        default_file = os.path.join(args.project_dir, default_file)
+        target = get_sdkconfig_value(default_file, 'CONFIG_IDF_TARGET')
+        if target:
+            return target
 
-def red_print(message: str, newline: str | None = '\n') -> None:
-    ansi_red = '\033[1;31m'
-    color_print(message, ansi_red, newline)
+    cache_path = os.path.join(args.build_dir, 'CMakeCache.txt')
+    if os.path.exists(cache_path):
+        return _parse_cmakecache(cache_path).get('IDF_TARGET')
+
+    return None
 
 
 def debug_print_idf_version() -> None:
-    print_warning(f'ESP-IDF {idf_version() or "version unknown"}')
+    log.note(f'ESP-IDF {idf_version() or "version unknown"}')
 
 
 def _load_hints_from_directory(directory: str) -> list:
@@ -195,7 +238,7 @@ def _load_hints_from_directory(directory: str) -> list:
             hints = yaml.safe_load(file)
             return hints if hints else []
     except (OSError, yaml.YAMLError):
-        yellow_print(f'HINT WARNING: Failed to load hints from "{hints_file}"')
+        log.warn(escape(f'Failed to load hints from "{hints_file}"'))
         return []
 
 
@@ -232,11 +275,9 @@ def _load_idf_hints() -> dict:
             try:
                 hints['modules'].append(getattr(importlib.import_module(name), 'generate_hint'))
             except ModuleNotFoundError:
-                red_print(f'Failed to import "{name}" from "{hint_modules_dir}" as a module')
-                raise SystemExit(1)
+                log.die(escape(f'Failed to import "{name}" from "{hint_modules_dir}" as a module'))
             except AttributeError:
-                red_print(f'Module "{name}" does not have function generate_hint.')
-                raise SystemExit(1)
+                log.die(escape(f'Module "{name}" does not have function generate_hint.'))
 
     # Load ESP-IDF components
     idf_path = os.environ.get('IDF_PATH')
@@ -304,23 +345,19 @@ def generate_hints_buffer(output: str, hints: dict) -> Generator:
                         try:
                             hint_list.append(hint['hint'].format(*hint_vars))
                         except KeyError as e:
-                            red_print(f'Argument {e} missing in {hint}. Check hints.yml file.')
-                            sys.exit(1)
+                            log.die(escape(f'Argument {e} missing in {hint}. Check hints.yml file.'))
             else:
                 match = re.compile(hint['re']).search(output)
         except KeyError as e:
-            red_print(f'Argument {e} missing in {hint}. Check hints.yml file.')
-            sys.exit(1)
+            log.die(escape(f'Argument {e} missing in {hint}. Check hints.yml file.'))
         except re.error as e:
-            red_print('{} from hints.yml have {} problem. Check hints.yml file.'.format(hint['re'], e))
-            sys.exit(1)
+            log.die(escape('{} from hints.yml have {} problem. Check hints.yml file.'.format(hint['re'], e)))
         if hint_list:
-            for message in hint_list:
-                yield ' '.join(['HINT:', message])
+            yield from hint_list
         elif match:
             extra_info = ', '.join(match.groups()) if hint.get('match_to_output', '') else ''
             try:
-                yield ' '.join(['HINT:', hint['hint'].format(extra_info)])
+                yield hint['hint'].format(extra_info)
             except KeyError:
                 raise KeyError(f"Argument 'hint' missing in {hint}. Check hints.yml file.")
 
@@ -378,6 +415,7 @@ class RunTool:
         interactive: bool = False,
         convert_output: bool = False,
         buffer_size: int | None = None,
+        stdin: Any = None,
     ) -> None:
         self.tool_name = tool_name
         self.args = args
@@ -391,6 +429,8 @@ class RunTool:
         self.interactive = interactive
         self.convert_output = convert_output
         self.buffer_size = buffer_size or 256
+        # None inherits the parent's stdin; otherwise a file object or subprocess.DEVNULL
+        self.stdin = stdin
 
     def __call__(self) -> None:
         def quote_arg(arg: str) -> str:
@@ -410,11 +450,24 @@ class RunTool:
         env_copy = dict(os.environ)
         env_copy.update(self.env or {})
 
+        # Color control:
+        # 1. CLICOLOR_FORCE:
+        #   By default, GNU Make and Ninja strip away color escape sequences when they see that their stdout
+        #   is redirected. If idf.py's stdout is not redirected, the final output is a TTY, so we can tell
+        #   Make/Ninja to disable stripping of color escape sequences. (Requires Ninja v1.9.0 or later.)
+        # 2. FORCE_COLOR:
+        #   The same idea as above, but FORCE_COLOR is used by Python packages like rich.
+        # 3. NO_COLOR:
+        #   Universal kill switch; if set, we won't force colors.
+        if sys.stdout.isatty() and not env_copy.get('NO_COLOR'):
+            env_copy.setdefault('CLICOLOR_FORCE', '1')
+            env_copy.setdefault('FORCE_COLOR', '1')
+
         process: Process | subprocess.CompletedProcess[bytes]
         if self.hints:
             process, stderr_output_file, stdout_output_file = asyncio.run(self.run_command(self.args, env_copy))
         else:
-            process = subprocess.run(self.args, env=env_copy, cwd=self.cwd)
+            process = subprocess.run(self.args, env=env_copy, cwd=self.cwd, stdin=self.stdin)
             stderr_output_file, stdout_output_file = None, None
         if process.returncode == 0:
             return
@@ -427,7 +480,7 @@ class RunTool:
             # hints in interactive mode were already processed, don't print them again
             if not self.interactive:
                 for hint in generate_hints(stderr_output_file, stdout_output_file):
-                    yellow_print(hint)
+                    log.hint(escape(hint))
             raise FatalError(
                 f'{self.tool_name} failed with exit code {process.returncode}, '
                 f'output of the command is in the {stderr_output_file} and {stdout_output_file}'
@@ -440,7 +493,7 @@ class RunTool:
         and of the command, the id of the process, paths to captured output"""
         log_dir_name = 'log'
         try:
-            os.mkdir(os.path.join(self.build_dir, log_dir_name))
+            os.makedirs(os.path.join(self.build_dir, log_dir_name), exist_ok=True)
         except FileExistsError:
             pass
         # Note: we explicitly pass in os.environ here, as we may have set IDF_PATH there during startup
@@ -451,20 +504,20 @@ class RunTool:
                 env=env_copy,
                 limit=1024 * self.buffer_size,
                 cwd=self.cwd,
+                stdin=self.stdin,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except NotImplementedError:
             message = (
-                f"ERROR: {sys.executable} doesn't support asyncio. "
-                "Workaround: re-run idf.py with the '--no-hints' argument."
+                f"{sys.executable} doesn't support asyncio. Workaround: re-run idf.py with the '--no-hints' argument."
             )
             if sys.platform == 'win32':
                 message += (
                     ' To fix the issue use the Windows Installer for setting up your python environment, '
                     'available from: https://dl.espressif.com/dl/esp-idf/'
                 )
-            sys.exit(message)
+            log.die(escape(message))
 
         stderr_output_file = os.path.join(self.build_dir, log_dir_name, f'idf_py_stderr_output_{p.pid}')
         stdout_output_file = os.path.join(self.build_dir, log_dir_name, f'idf_py_stdout_output_{p.pid}')
@@ -482,7 +535,8 @@ class RunTool:
                 # the even loop is closed and we get RuntimeError: Event loop is closed
                 # in the transport __del__ function because it's trying to use the closed
                 # even loop.
-                red_print(f'\n{self.tool_name} process terminated\n')
+                log.print('\n')
+                log.err(f'{self.tool_name} process terminated')
         await p.wait()  # added for avoiding None returncode
         return p, stderr_output_file, stdout_output_file
 
@@ -599,7 +653,7 @@ class RunTool:
                             last_line += output
                             if last_line[-1] == '\n':
                                 for hint in generate_hints_buffer(last_line, hints):
-                                    yellow_print(hint)
+                                    log.hint(escape(hint))
                                 last_line = ''
                     else:
                         output_b = await read_stream_bytes()
@@ -628,9 +682,11 @@ class RunTool:
                             else:
                                 write_stdout_bytes(forward_b)
         except (OSError, RuntimeError) as e:
-            yellow_print(
-                "WARNING: The exception {} was raised and we can't capture all your {} and "
-                'hints on how to resolve errors can be not accurate.'.format(e, output_stream.name.strip('<>'))
+            log.warn(
+                escape(
+                    "The exception {} was raised and we can't capture all your {} and "
+                    'hints on how to resolve errors can be not accurate.'.format(e, output_stream.name.strip('<>'))
+                )
             )
 
 
@@ -654,28 +710,16 @@ def run_target(
 
     generator_cmd = list(GENERATORS[args.generator]['command'])
 
-    if args.generator == 'Ninja':
-        parallel_level = os.environ.get('IDF_PY_BUILD_JOBS')
-        if parallel_level:
-            try:
-                jobs = int(parallel_level)
-            except ValueError as e:
-                raise FatalError('Environment variable IDF_PY_BUILD_JOBS must be a positive integer') from e
+    # Parallel jobs from -j/--jobs (or IDF_PY_BUILD_JOBS), falling back to the generator's default.
+    jobs = getattr(args, 'jobs', None)
+    if jobs is None:
+        jobs = GENERATORS[args.generator].get('default_jobs')
 
-            if jobs <= 0:
-                raise FatalError('Environment variable IDF_PY_BUILD_JOBS must be a positive integer')
-
-            generator_cmd += ['-j', str(jobs)]
+    if jobs is not None:
+        generator_cmd += ['-j', str(jobs)]
 
     if args.verbose:
         generator_cmd += [GENERATORS[args.generator]['verbose_flag']]
-
-    # By default, GNU Make and Ninja strip away color escape sequences when they see that their stdout is redirected.
-    # If idf.py's stdout is not redirected, the final output is a TTY, so we can tell Make/Ninja to disable stripping
-    # of color escape sequences. (Requires Ninja v1.9.0 or later.)
-    if sys.stdout.isatty():
-        if 'CLICOLOR_FORCE' not in env:
-            env['CLICOLOR_FORCE'] = '1'
 
     RunTool(
         generator_cmd[0],
@@ -930,16 +974,14 @@ def merge_action_lists(*action_lists: dict, custom_actions: dict[str, Any] | Non
             existing_identifiers.add(name)
             existing_identifiers.update(action.get('aliases', []))
         except UserWarning as e:
-            yellow_print(f'WARNING: {e}. External action will not be added.')
+            log.warn(escape(f'{e}. External action will not be added.'))
 
     for new_opt in custom_actions.get('global_options', []):
         if any(
             set(new_opt.get('names', [])) & set(existing.get('names', []))
             for existing in merged_actions['global_options']
         ):
-            yellow_print(
-                f'WARNING: Global option {new_opt["names"]} already defined. External option will not be added.'
-            )
+            log.warn(escape(f'Global option {new_opt["names"]} already defined. External option will not be added.'))
         else:
             merged_actions['global_options'].append(new_opt)
 

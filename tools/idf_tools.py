@@ -505,8 +505,10 @@ def get_file_size_sha256(filename: str, block_size: int = 65536) -> tuple[int, s
 
 def report_progress(count: int, block_size: int, total_size: int) -> None:
     """
-    Prints progress (count * block_size * 100 / total_size) to stdout.
+    Prints download progress to stdout.
     """
+    if g.quiet or total_size <= 0:
+        return
     percent = int(count * block_size * 100 / total_size)
     percent = min(100, percent)
     sys.stdout.write(f'\r{percent}%')
@@ -998,7 +1000,25 @@ class IDFTool:
                 f'non-zero exit code ({e.returncode}) with message: {e.stderr.decode("utf-8", errors="ignore")}'
             )  # type: ignore
 
-        return self.parse_tool_version(version_cmd_result.decode('utf-8'))
+        version_str = version_cmd_result.decode('utf-8')
+        if not version_str.strip():
+            # The tool ran and exited successfully, but produced no output when its
+            # output was captured. On some Windows systems, antivirus, endpoint-security
+            # or DLP/encryption software intercepts short-lived toolchain processes and
+            # strips their stdout when it is captured through a pipe, while the same
+            # command works when run directly in a terminal. Surface an actionable hint
+            # instead of silently reporting the version as 'unknown', which otherwise
+            # sends users into a fruitless reinstall loop.
+            # See https://github.com/espressif/esp-idf/issues/18727
+            warn(
+                f'tool {self.name} ran but returned no version output. This is usually caused by '
+                'antivirus, endpoint-security or DLP/encryption software stripping the output of '
+                'toolchain processes; the same command often works when run directly in a terminal. '
+                'Add an exclusion for the ESP-IDF tools directory in that software. If the problem '
+                'persists, run the tool manually to check for a missing DLL.'
+            )
+            return UNKNOWN_VERSION
+        return self.parse_tool_version(version_str)
 
     def get_version_from_file(self, version: str) -> str:
         """
@@ -3008,6 +3028,10 @@ def action_add_version(args: Any) -> None:
     )
     updated_tools = []
     for file_size, file_sha256, file_name in checksum_info:
+        skip_files = ['debug-sections', 'esp8266-multilib']
+        if any(skip_file in file_name for skip_file in skip_files):
+            continue
+
         xz_file = file_name.replace('.tar.gz', '.tar.xz')
         if xz_file in updated_tools:
             # .tar.xz archives are preferable, but .tar.gz is needed, for example, when using PlatformIO

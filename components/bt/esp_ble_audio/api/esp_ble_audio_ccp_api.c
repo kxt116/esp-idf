@@ -18,7 +18,12 @@ esp_err_t esp_ble_audio_ccp_call_control_server_register_bearer(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_server_register_bearer_safe(param, bearer);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_server_register_bearer(param, bearer);
+
+    bt_le_host_unlock();
+
     if (err) {
         /* Map Zephyr error codes to ESP-IDF error codes */
         switch (err) {
@@ -47,7 +52,12 @@ esp_err_t esp_ble_audio_ccp_call_control_server_unregister_bearer(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_server_unregister_bearer_safe(bearer);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_server_unregister_bearer(bearer);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }
@@ -64,7 +74,12 @@ esp_err_t esp_ble_audio_ccp_call_control_server_set_bearer_provider_name(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_server_set_bearer_provider_name_safe(bearer, name);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_server_set_bearer_provider_name(bearer, name);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }
@@ -73,7 +88,7 @@ esp_err_t esp_ble_audio_ccp_call_control_server_set_bearer_provider_name(
 }
 
 esp_err_t esp_ble_audio_ccp_call_control_server_get_bearer_provider_name(
-    esp_ble_audio_ccp_call_control_server_bearer_t *bearer, const char **name)
+    esp_ble_audio_ccp_call_control_server_bearer_t *bearer, char *name, size_t name_size)
 {
     esp_err_t err;
 
@@ -81,7 +96,41 @@ esp_err_t esp_ble_audio_ccp_call_control_server_get_bearer_provider_name(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_server_get_bearer_provider_name_safe(bearer, name);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_server_get_bearer_provider_name(bearer, name, name_size);
+
+    bt_le_host_unlock();
+
+    if (err) {
+        switch (err) {
+        case -EFAULT:
+            return ESP_ERR_INVALID_STATE;
+        case -ENOMEM:
+            return ESP_ERR_NO_MEM;
+        default:
+            return ESP_FAIL;
+        }
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t esp_ble_audio_ccp_call_control_server_get_bearer_uci(
+    esp_ble_audio_ccp_call_control_server_bearer_t *bearer, char *uci)
+{
+    esp_err_t err;
+
+    if (bearer == NULL || uci == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_server_get_bearer_uci(bearer, uci);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }
@@ -100,7 +149,12 @@ esp_err_t esp_ble_audio_ccp_call_control_client_discover(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_client_discover_safe(conn, out_client);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_client_discover(conn, out_client);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }
@@ -117,7 +171,12 @@ esp_err_t esp_ble_audio_ccp_call_control_client_register_cb(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_client_register_cb_safe(cb);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_client_register_cb(cb);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }
@@ -134,7 +193,12 @@ esp_err_t esp_ble_audio_ccp_call_control_client_unregister_cb(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_client_unregister_cb_safe(cb);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_client_unregister_cb(cb);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }
@@ -152,7 +216,12 @@ esp_err_t esp_ble_audio_ccp_call_control_client_get_bearers(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_client_get_bearers_safe(client, bearers);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_client_get_bearers(client, bearers);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }
@@ -171,7 +240,12 @@ esp_err_t esp_ble_audio_ccp_call_control_client_read_bearer_provider_name(
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = bt_ccp_call_control_client_read_bearer_provider_name_safe(bearer);
+    BT_LE_HOST_LOCK_OR_RETURN(ESP_ERR_TIMEOUT);
+
+    err = bt_ccp_call_control_client_read_bearer_provider_name(bearer);
+
+    bt_le_host_unlock();
+
     if (err) {
         return ESP_FAIL;
     }

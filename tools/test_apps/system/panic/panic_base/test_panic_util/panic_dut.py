@@ -68,7 +68,7 @@ class PanicTestDut(IdfDut):
         return self.target in ['esp32', 'esp32s3', 'esp32p4', 'esp32h4', 'esp32s31']
 
     def run_test_func(self, test_func_name: str) -> None:
-        if self.target == 'esp32p4' and not self.app.sdkconfig.get('ESP32P4_SELECTS_REV_LESS_V3'):
+        if self.target == 'esp32p4':
             self.write('\n')
         self.expect_exact('Enter test name:')
         self.write(test_func_name)
@@ -104,9 +104,16 @@ class PanicTestDut(IdfDut):
         result = self.expect(pattern, return_what_before_match=True).decode('utf-8')
         return result.strip()
 
-    def expect_gme(self, reason: str) -> None:
-        """Expect method for Guru Meditation Errors"""
-        self.expect_exact(f"Guru Meditation Error: Core  0 panic'ed ({reason})")
+    def expect_gme(self, reason: str, core: int | None = 0) -> None:
+        """Expect method for Guru Meditation Errors
+
+        Pass core=None to accept any core id, including the -1 reported for
+        faults which cannot be attributed to a single core.
+        """
+        if core is None:
+            self.expect(rf"Guru Meditation Error: Core\s+\S+ panic'ed \({re.escape(reason)}\)")
+        else:
+            self.expect_exact(f"Guru Meditation Error: Core  {core} panic'ed ({reason})")
 
     def expect_reg_dump(self, core: int | None = None) -> None:
         if core is None:
@@ -148,6 +155,8 @@ class PanicTestDut(IdfDut):
         espcoredump_args = [
             sys.executable,
             espcoredump_script,
+            '--port',
+            self.serial.port,
             '-b115200',
             'info_corefile',
         ]
